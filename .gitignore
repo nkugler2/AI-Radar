@@ -8,3 +8,12 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables
+.env
+
+# duckdb databse
+data/
+
+# Mac Files
+.DS_Store

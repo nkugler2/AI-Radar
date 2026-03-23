@@ -1,7 +1,14 @@
 [project]
 name = "claude-squad-ai-attempt"
 version = "0.1.0"
-description = "Add your description here"
+description = "Data pipeline and dashboard tracking popular AI Python repositories on GitHub"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "duckdb>=1.5.0",
+    "plotly>=6.6.0",
+    "polars>=1.39.3",
+    "python-dotenv>=1.2.2",
+    "requests>=2.32.5",
+    "streamlit>=1.55.0",
+]
