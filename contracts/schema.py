@@ -59,6 +59,7 @@ class Language(str, Enum):
     # RUST = "rust"
 
 
+# gives my code easy to use names for the strings that GitHub wants
 class SearchTopic(str, Enum):
     """GitHub topic tags used as seed queries. Adding a value here
     automatically includes it in the next ingestion run."""
@@ -161,6 +162,14 @@ MAINTENANCE_WEIGHTS = {
 # ---------------------------------------------------------------------------
 # Raw table schemas (Ingestion agent creates these)
 # ---------------------------------------------------------------------------
+RAW_REPOS_COLUMNS = [
+    "id", "full_name", "owner", "name", "description", "language",
+    "stars", "forks", "open_issues", "watchers", "size_kb",
+    "created_at", "updated_at", "pushed_at", "fetched_at",
+    "topics", "license", "homepage", "default_branch",
+    "is_fork", "is_archived",
+]
+
 RAW_REPOS_SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS {RAW_REPOS_TABLE} (
     id                  BIGINT PRIMARY KEY,
