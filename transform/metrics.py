@@ -45,7 +45,7 @@ def _assign_category(topics: list[str] | None) -> str:
             4. If there is no topic, or if there is no matching topic, we will use `AICategory.Other`
 
     """
-    if topics:                                          # account for if topics is an empty list
+    if topics is not None and len(topics) > 0:          # account for if topics is an empty list
         for topic in topics:                            # loop through each tag topic in the list
             if topic in TOPIC_TO_CATEGORY:              # if topic is one of my categories
                 return TOPIC_TO_CATEGORY[topic].value   # use my corresponding word
