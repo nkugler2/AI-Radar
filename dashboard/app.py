@@ -100,7 +100,7 @@ with tab_leader:
         .sort(sort_col, descending=True, nulls_last=True)
     )
 
-    st.dataframe(leaderboard, use_container_width=True, hide_index=True)
+    st.dataframe(leaderboard, width='stretch', hide_index=True)
 
 # ---- 2. Category breakdown ------------------------------------------------
 with tab_category:
@@ -132,7 +132,7 @@ with tab_category:
             title="Repos per Category",
         )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     st.info("Use the sidebar category filter to update the Leaderboard and Rising Stars views.")
 
@@ -159,7 +159,7 @@ with tab_rising:
         .head(20)
     )
 
-    st.dataframe(rising, use_container_width=True, hide_index=True)
+    st.dataframe(rising, width='stretch', hide_index=True)
 
     # Momentum scatter
     if "stars" in filtered_df.columns and "momentum_score" in filtered_df.columns:
@@ -179,7 +179,7 @@ with tab_rising:
                 title="Stars vs Momentum (top 50)",
                 size="stars_per_day" if "stars_per_day" in scatter_df.columns else None,
             )
-            st.plotly_chart(fig_scatter, use_container_width=True)
+            st.plotly_chart(fig_scatter, width='stretch')
 
 # ---- 4. Repo Detail -------------------------------------------------------
 with tab_detail:
