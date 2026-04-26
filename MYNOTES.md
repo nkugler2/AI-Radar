@@ -12,6 +12,20 @@ This note will act as a Changelog and a notes repository to understand what my a
 
 I reviewed the work of the three agents, made changes where I thought needed, and am now ready to merge them all into main.
 
+### Steps Taken Today
+
+1. Committed each worktree using lazygit within that specific worktree
+2. Went back to master and then merged the three worktrees. Kept the worktrees since I knew there would be bugs I needed to fix.
+3. Ran scripts for ingestion -> transformation -> Dashboard
+4. Fixed a type error in the transformation script
+5. Got Dashboard working
+6. Fixed Dashboard warning that came up in the terminal about a deprecated setting
+
+### Next Steps
+
+1. Improve Dashboard experience: - Add more interactive elements (e.g., filters, drill-downs). I should be able to click on something like AI Agents in the Category Breakdown and see a dataframe of just that topic. The leaderboard should have more sort by options, or just rely on the native dataframe sorting with the headings. Should not have a drop down in the Repo Detail tab. Should either have a search, or a way of getting to it from any of the dataframes.
+2. Major Dashboard Fix: The side bar on the left is ugly, awful, and possibly useless. Need to do something completely different
+
 ## 03-23-2026 - Initial Run
 
 This was from setting up the repo, the agent workflow, and starting the first run for each agent
