@@ -158,7 +158,9 @@ def compute_metrics(df: pl.DataFrame) -> pl.DataFrame:
 
     # --- Momentum score ------------------------------------------------------
     # Each component is normalised to roughly [0, 1] before weighting.
+    # Orders each repo by stars per day (with no ties, ex/ two repos with 1,000)
     spd_norm = pl.col("stars_per_day").rank("ordinal") / pl.col("stars_per_day").count()
+    # normalize recent push bonus over one year (365 days), capped at 1.0. Assumes repo age ≥ 1 day.
     push_bonus = 1.0 - pl.col("days_since_push").cast(pl.Float64).clip(0, 365) / 365.0
     fr_norm = pl.col("fork_to_star_ratio").rank("ordinal") / pl.col("fork_to_star_ratio").count()
     ia_norm = pl.col("open_issues").cast(pl.Float64).rank("ordinal") / pl.col("open_issues").count()

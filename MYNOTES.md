@@ -8,6 +8,14 @@ tags: []
 
 This note will act as a Changelog and a notes repository to understand what my agents are doing, when, and why
 
+## 05-04-2026 - Changing to using main.py
+
+### Steps Taken Today
+
+0. Commited MYNOTES and MYREADME changes (minor)
+1. Changed the running of the pipeline to only use main.py - `uv run python main.py`
+2.
+
 ## 03-30-2026 - Inital commit and merge of changes
 
 I reviewed the work of the three agents, made changes where I thought needed, and am now ready to merge them all into main.
