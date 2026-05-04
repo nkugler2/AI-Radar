@@ -126,7 +126,21 @@ The three layers — ingestion, transform, and dashboard — have clean boundari
 - Agents never need to coordinate mid-task because the interface is pre-agreed
 - Merging is straightforward because branches touch different files
 
-### Agent prompts used
+### Default Agent Prompt Per Agent
+
+**Agent 1 — Ingestion** (`feature/ingestion`):
+
+> "You are building the ingestion layer for a project called AI Radar. Read `contracts/schema.py` first — this is the only source of truth for table names, field names, and the DB path. Your job:
+
+**Agent 2 — Transform** (`feature/transform`):
+
+> "You are building the transform layer for a project called AI Radar. Read `contracts/schema.py` first — this is the only source of truth for table names, field names, and the DB path. Your job:
+
+**Agent 3 — Dashboard** (`feature/dashboard`):
+
+> "You are building the Streamlit dashboard for a project called AI Radar. Read `contracts/schema.py` first — this is the only source of truth for table names and the DB path. Your job:
+
+### Agent prompts used to start this project
 
 **Agent 1 — Ingestion** (`feature/ingestion`):
 

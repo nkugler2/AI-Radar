@@ -36,7 +36,7 @@ This was from setting up the repo, the agent workflow, and starting the first ru
 - [x] Verify ingestion - runner
 - [x] Verify transform - clean
 - [x] Verify transform - metrics
-- [ ] Verify dashboard - app.py - didn't actuall check this, but will check after running if there are issues.
+- [x] Verify dashboard - app.py - didn't actuall check this, but will check after running if there are issues.
 
 ### Ingestion
 
