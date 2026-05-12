@@ -101,34 +101,155 @@ if df.is_empty():
     st.warning("No data yet — run the ingestion and transform pipelines first.")
     st.stop()
 
-# Session state: tracks which repo was last clicked in any table
+# Session state initialization
 if "selected_repo" not in st.session_state:
     st.session_state.selected_repo = None
 
 # ---------------------------------------------------------------------------
-# Tabs
+# Tabs — Category Breakdown first, then Leaderboard, Rising Stars, Repo Detail
 # ---------------------------------------------------------------------------
-tab_leader, tab_category, tab_rising, tab_detail = st.tabs(
-    ["Leaderboard", "Category Breakdown", "Rising Stars", "Repo Detail"]
+tab_category, tab_leader, tab_rising, tab_detail = st.tabs(
+    ["Category Breakdown", "Leaderboard", "Rising Stars", "Repo Detail"]
 )
 
-# ---- 1. Leaderboard -------------------------------------------------------
+# ---- 1. Category Breakdown ------------------------------------------------
+with tab_category:
+    st.subheader("Category Breakdown")
+    st.caption("Click bars to filter repos by category. Multi-select supported.")
+
+    cat_counts = (
+        df
+        .filter(pl.col("category").is_not_null())
+        .group_by("category")
+        .agg(pl.len().alias("count"))
+        .sort("count", descending=True)
+    )
+
+    chart_type = st.radio("Chart type", ["Bar", "Pie"], horizontal=True)
+
+    if chart_type == "Bar":
+        fig = px.bar(
+            cat_counts.to_dict(as_series=False),
+            x="category",
+            y="count",
+            color="category",
+            title="Repos per Category",
+        )
+        chart_event = st.plotly_chart(fig, on_select="rerun", selection_mode="points")
+
+        selected_cats: list[str] = []
+        if chart_event and chart_event.selection:
+            points = chart_event.selection.get("points", [])
+            for p in points:
+                cat = p.get("x")
+                if cat and cat not in selected_cats:
+                    selected_cats.append(cat)
+    else:
+        fig = px.pie(
+            cat_counts.to_dict(as_series=False),
+            names="category",
+            values="count",
+            title="Repos per Category",
+        )
+        chart_event = st.plotly_chart(fig, on_select="rerun")
+
+        selected_cats = []
+        if chart_event and chart_event.selection:
+            points = chart_event.selection.get("points", [])
+            for p in points:
+                cat = p.get("label")
+                if cat and cat not in selected_cats:
+                    selected_cats.append(cat)
+
+    cat_cols = [
+        "full_name", "category", "stars", "forks",
+        "momentum_score", "maintenance_score", "days_since_push",
+    ]
+    cat_cols = [c for c in cat_cols if c in df.columns]
+
+    if selected_cats:
+        st.markdown(f"**Showing:** {', '.join(selected_cats)}")
+        cat_repos = (
+            df
+            .filter(pl.col("category").is_in(selected_cats))
+            .select(cat_cols)
+            .sort("stars", descending=True, nulls_last=True)
+        )
+    else:
+        cat_repos = (
+            df
+            .select(cat_cols)
+            .sort("stars", descending=True, nulls_last=True)
+        )
+
+    cat_event = st.dataframe(
+        cat_repos,
+        width="stretch",
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="multi-row",
+    )
+
+    selected_repo_names: list[str] = []
+    if cat_event.selection.rows:
+        selected_repo_names = [
+            cat_repos.row(i, named=True)["full_name"]
+            for i in cat_event.selection.rows
+        ]
+
+    if selected_repo_names:
+        n_cols = min(len(selected_repo_names), 4)
+        cols = st.columns(n_cols)
+        for i, repo_name in enumerate(selected_repo_names[:4]):
+            repo_row = df.filter(pl.col("full_name") == repo_name).row(0, named=True)
+            with cols[i]:
+                st.markdown(f"#### {repo_row['full_name']}")
+                st.markdown(f"**Category:** {repo_row.get('category') or 'N/A'}")
+                st.metric("Stars", f"{repo_row.get('stars', 0):,}")
+                momentum = repo_row.get("momentum_score")
+                st.metric("Momentum Score", f"{momentum:.3f}" if momentum is not None else "N/A")
+                desc = repo_row.get("description") or ""
+                if len(desc) > 200:
+                    desc = desc[:200] + "…"
+                st.markdown(f"**Description:** {desc or 'N/A'}")
+
+# ---- 2. Leaderboard -------------------------------------------------------
 with tab_leader:
     st.subheader("Leaderboard")
     st.caption("Click any column header to sort. Click a row to see full details.")
 
-    # Inline category filter (replaces sidebar)
     categories = sorted(df["category"].drop_nulls().unique().to_list())
-    selected_categories = st.multiselect(
-        "Filter by category",
-        options=categories,
-        default=categories,
-        placeholder="Filter by category…",
-    )
+
+    # Initialize per-category checkbox states (all checked by default)
+    for cat in categories:
+        key = f"leader_cat_{cat}"
+        if key not in st.session_state:
+            st.session_state[key] = True
+
+    btn_col1, btn_col2, _ = st.columns([1, 1, 8])
+    with btn_col1:
+        if st.button("Select All"):
+            for cat in categories:
+                st.session_state[f"leader_cat_{cat}"] = True
+    with btn_col2:
+        if st.button("Clear All"):
+            for cat in categories:
+                st.session_state[f"leader_cat_{cat}"] = False
+
+    # Render checkboxes in a grid, 4 per row
+    cols_per_row = 4
+    cat_rows = [categories[i:i + cols_per_row] for i in range(0, len(categories), cols_per_row)]
+    for cat_row in cat_rows:
+        check_cols = st.columns(cols_per_row)
+        for j, cat in enumerate(cat_row):
+            with check_cols[j]:
+                st.checkbox(cat, key=f"leader_cat_{cat}")
+
+    selected_categories = [cat for cat in categories if st.session_state.get(f"leader_cat_{cat}", True)]
     filtered_df = (
         df.filter(pl.col("category").is_in(selected_categories))
         if selected_categories
-        else df
+        else df.head(0)
     )
 
     leaderboard_cols = [
@@ -157,97 +278,36 @@ with tab_leader:
         with st.expander(f"Detail — {repo_name}", expanded=True):
             show_repo_detail(repo_row)
 
-# ---- 2. Category breakdown ------------------------------------------------
-with tab_category:
-    st.subheader("Category Breakdown")
-    st.caption("Click a bar or slice to see all repos in that category.")
-
-    cat_counts = (
-        df
-        .filter(pl.col("category").is_not_null())
-        .group_by("category")
-        .agg(pl.len().alias("count"))
-        .sort("count", descending=True)
-    )
-
-    chart_type = st.radio("Chart type", ["Bar", "Pie"], horizontal=True)
-
-    if chart_type == "Bar":
-        fig = px.bar(
-            cat_counts.to_dict(as_series=False),
-            x="category",
-            y="count",
-            color="category",
-            title="Repos per Category",
-        )
-    else:
-        fig = px.pie(
-            cat_counts.to_dict(as_series=False),
-            names="category",
-            values="count",
-            title="Repos per Category",
-        )
-
-    chart_event = st.plotly_chart(fig, width="stretch", on_select="rerun")
-
-    # Determine which category was clicked
-    clicked_category = None
-    if chart_event and chart_event.selection:
-        points = chart_event.selection.get("points", [])
-        if points:
-            clicked_category = (
-                points[0].get("x") if chart_type == "Bar" else points[0].get("label")
-            )
-
-    if clicked_category:
-        st.subheader(f"Repos — {clicked_category}")
-        st.caption("Click a row to see full details.")
-
-        cat_cols = [
-            "full_name", "stars", "forks",
-            "momentum_score", "maintenance_score", "days_since_push",
-        ]
-        cat_cols = [c for c in cat_cols if c in df.columns]
-
-        cat_repos = (
-            df
-            .filter(pl.col("category") == clicked_category)
-            .select(cat_cols)
-            .sort("stars", descending=True, nulls_last=True)
-        )
-
-        cat_event = st.dataframe(
-            cat_repos,
-            width="stretch",
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row",
-        )
-
-        if cat_event.selection.rows:
-            row_idx = cat_event.selection.rows[0]
-            repo_name = cat_repos.row(row_idx, named=True)["full_name"]
-            st.session_state.selected_repo = repo_name
-            repo_row = df.filter(pl.col("full_name") == repo_name).row(0, named=True)
-            with st.expander(f"Detail — {repo_name}", expanded=True):
-                show_repo_detail(repo_row)
-
 # ---- 3. Rising Stars -------------------------------------------------------
 with tab_rising:
     st.subheader("Rising Stars")
     st.caption(
-        "Top 20 repos by momentum score — newer projects growing fast. "
+        "Top repos by momentum score — newer projects growing fast. "
         "Click a row to see full details."
+    )
+
+    age_limit = st.slider(
+        "Show repos created within the last N days",
+        min_value=7,
+        max_value=365,
+        value=90,
+        step=7,
+    )
+
+    rising_df = (
+        df.filter(pl.col("repo_age_days") <= age_limit)
+        if "repo_age_days" in df.columns
+        else df
     )
 
     rising_cols = [
         "full_name", "category", "stars",
         "momentum_score", "repo_age_days", "stars_per_day", "days_since_push",
     ]
-    rising_cols = [c for c in rising_cols if c in df.columns]
+    rising_cols = [c for c in rising_cols if c in rising_df.columns]
 
     rising = (
-        df
+        rising_df
         .select(rising_cols)
         .sort("momentum_score", descending=True, nulls_last=True)
         .head(20)
@@ -269,10 +329,10 @@ with tab_rising:
         with st.expander(f"Detail — {repo_name}", expanded=True):
             show_repo_detail(repo_row)
 
-    # Momentum scatter
-    if "stars" in df.columns and "momentum_score" in df.columns:
+    # Momentum scatter — scoped to the age-filtered DataFrame
+    if "stars" in rising_df.columns and "momentum_score" in rising_df.columns:
         scatter_df = (
-            df
+            rising_df
             .filter(pl.col("momentum_score").is_not_null())
             .sort("momentum_score", descending=True)
             .head(50)
@@ -293,7 +353,6 @@ with tab_rising:
 with tab_detail:
     st.subheader("Repo Detail")
 
-    # Text search — replaces the dropdown
     search_term = st.text_input(
         "Search repositories",
         placeholder="Type a repo name or owner…",
@@ -310,7 +369,6 @@ with tab_detail:
     if not matches:
         st.info("No repositories match your search.")
     else:
-        # Pre-select the repo that was last clicked in another tab
         default_idx = 0
         if st.session_state.selected_repo and st.session_state.selected_repo in matches:
             default_idx = matches.index(st.session_state.selected_repo)
