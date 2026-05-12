@@ -8,13 +8,33 @@ tags: []
 
 This note will act as a Changelog and a notes repository to understand what my agents are doing, when, and why
 
+## 05-08-2026 - Changes to the dashboard
+
+### Steps taken today
+
+1. Used my "Next Steps" from 05-04-2026 as a prompt to make changes to the dashboard
+2. changes were solid, but new changes need to be made based on the actual functionality that I want
+
+### Next Steps
+
+The functionality that I actually want is:
+
+1. The Category Breakdown: This should show a bar graph with the count of each category, and each bar should show the percentage of the total repos. Selecting one bar shows a dataframe with those repos underneath, and selecting multiple bars makes a dataframe with those selected bars and a title to show what categories are selected. You should then be able to select **multiple** repos and have each one appear below the dataframe. right now you can select one and only it appears. being able to select multiple repos would allow someone to compare repos within one cateogry, or accross several categories.
+
+2. The Leaderboard: A way to see the top repo's for any selection of categories. the current way of filtering is bad, maybe a check box system where you can select all or select none would be better. This is just a way to see what is at the top at any one moment that you can filter by things like stars, momentum, etc. Right now I have Leaderboard and Category breakdown, but htye both kind of do the same thing. The Category Breakdown Should be first, as it is a way to see the distribution of repos across categories. The Leaderboard should then show the top repos for the selected categories.
+
+3. Rising stars: right now, rising stars is being judged by momentum score. that isnt working, because things like Autogpt are taking the lead there, which just makes it the same view as the leaderboard or the category breakdown. in addition, autogpt is over 1000 days old, and is thus not a good representation of the rising stars. the rising stars is arguabblly the most important view - it is what allows me to track new and interesting projects that are worth my attention. so things that are new, maybe I can have a slider or drop down to say how long ago i want to look back, and it can show me repos created within that past time that have high momentum scores. then I can really have soemthing that tracks new repos I should look into.
+
+4. Repo detail: the current repo detail tab is useless, there is nothing useful there. But on the topic of repo details, my current implementation shows me the names and basic descriptions, but I cant get a vibe of what the repos actually are. Can i pull the readme.md files and display them, or at least the markdown output? Is there other useful info I can put for when you select a certain repository that would help me understand them?
+
+I should put all of this back into ai and get some feedback on what my goals are and what will actually be useful.
+
 ## 05-04-2026 - Changing to using main.py
 
 ### Steps Taken Today
 
 0. Commited MYNOTES and MYREADME changes (minor)
 1. Changed the running of the pipeline to only use main.py - `uv run python main.py`
-2.
 
 ## 03-30-2026 - Inital commit and merge of changes
 

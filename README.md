@@ -1,6 +1,6 @@
 # README.md
 
-A data pipeline and dashboard for tracking the health and momentum of popular AI Python projects on GitHub. AI Radar ingests repository metadata from the GitHub API, runs analytical transforms, and surfaces insights through an interactive Streamlit dashboard — showing which projects are gaining traction, which are well-maintained, and how the AI open source ecosystem is evolving.
+A data pipeline and dashboard for tracking the health and momentum of popular AI Python projects on GitHub. AI Radar ingests repository metadata from the GitHub API, runs analytial transforms, and surfaces insights through an interactive Streamlit dashboard — showing which projects are gaining traction, which are well-maintained, and how the AI open source ecosystem is evolving.
 
 Built as a learning project for multi-agent agentic coding using [Claude Squad](https://github.com/smtg-ai/claude-squad), where three Claude Code instances work in parallel across isolated git worktrees.
 
