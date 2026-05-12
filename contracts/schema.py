@@ -192,7 +192,8 @@ CREATE TABLE IF NOT EXISTS {RAW_REPOS_TABLE} (
     homepage            VARCHAR,
     default_branch      VARCHAR,
     is_fork             BOOLEAN DEFAULT FALSE,
-    is_archived         BOOLEAN DEFAULT FALSE
+    is_archived         BOOLEAN DEFAULT FALSE,
+    readme_content      TEXT
 );
 """
 
@@ -259,7 +260,9 @@ CREATE TABLE IF NOT EXISTS {REPOS_TABLE} (
     category                VARCHAR,
 
     -- Flags
-    is_archived             BOOLEAN DEFAULT FALSE
+    is_archived             BOOLEAN DEFAULT FALSE,
+
+    readme_content          TEXT
 );
 """
 

@@ -51,6 +51,7 @@ def clean(df: pl.DataFrame) -> pl.DataFrame:
     # Fill null text
     df = df.with_columns(
         pl.col("description").fill_null(""),
+        pl.col("readme_content").fill_null(""),
     )
 
     # Ensure topics is an empty list when null
