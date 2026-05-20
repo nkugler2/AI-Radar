@@ -17,7 +17,7 @@ import polars as pl
 import plotly.express as px
 import streamlit as st
 
-from contracts.schema import DB_PATH, REPOS_TABLE, get_connection
+from contracts.schema import DB_PATH, REPOS_TABLE, RAW_CONTRIBUTORS_TABLE, get_connection
 
 
 # ---------------------------------------------------------------------------
@@ -39,11 +39,34 @@ def load_repos() -> pl.DataFrame:
     return pl.DataFrame(dict(zip(columns, zip(*result))))
 
 
+@st.cache_data(ttl=300)
+def load_contributors(repo_id: int) -> pl.DataFrame:
+    """Fetch top 10 contributors for a repo from raw_contributors."""
+    con = get_connection(read_only=True)
+    try:
+        result = con.execute(
+            f"SELECT login, contributions FROM {RAW_CONTRIBUTORS_TABLE} "
+            f"WHERE repo_id = ? ORDER BY contributions DESC LIMIT 10",
+            [repo_id],
+        ).fetchall()
+        columns = [desc[0] for desc in con.description]
+    finally:
+        con.close()
+
+    if not result:
+        return pl.DataFrame({"login": [], "contributions": []})
+
+    return pl.DataFrame(dict(zip(columns, zip(*result))))
+
+
 # ---------------------------------------------------------------------------
 # Shared detail panel — rendered wherever a repo is selected
 # ---------------------------------------------------------------------------
 def show_repo_detail(repo_row: dict) -> None:
     """Render all available fields for a single repo."""
+    full_name = repo_row.get("full_name", "")
+    st.link_button("Open on GitHub", f"https://github.com/{full_name}")
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -56,7 +79,8 @@ def show_repo_detail(repo_row: dict) -> None:
         st.markdown(f"**Category:** {repo_row.get('category') or 'N/A'}")
         topics = repo_row.get("topics")
         if topics:
-            st.markdown(f"**Topics:** {', '.join(topics)}")
+            badges = " ".join([f"`{t}`" for t in topics])
+            st.markdown(f"**Topics:** {badges}")
 
     with col2:
         st.metric("Stars", f"{repo_row.get('stars', 0):,}")
@@ -86,6 +110,20 @@ def show_repo_detail(repo_row: dict) -> None:
         st.markdown(f"**Releases:** {repo_row.get('release_count', 'N/A')}")
         st.markdown(f"**Days Since Release:** {repo_row.get('days_since_release', 'N/A')}")
         st.markdown(f"**Archived:** {'Yes' if repo_row.get('is_archived') else 'No'}")
+
+    st.subheader("Top Contributors")
+    contributors = load_contributors(repo_row.get("id", -1))
+    if contributors.is_empty():
+        st.write("No contributor data.")
+    else:
+        st.dataframe(contributors, hide_index=True)
+
+    with st.expander("README", expanded=True):
+        readme = repo_row.get("readme_content")
+        if readme:
+            st.markdown(readme)
+        else:
+            st.caption("No README available for this repo.")
 
 
 # ---------------------------------------------------------------------------
