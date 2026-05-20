@@ -10,6 +10,7 @@ Uses contracts/schema.py for all config constants.
 # ex/ str | int
 from __future__ import annotations
 
+import base64
 import logging
 import time
 from datetime import datetime, timezone
@@ -202,6 +203,29 @@ def parse_repo(raw: dict) -> dict:
         "is_fork": raw.get("fork", False),
         "is_archived": raw.get("archived", False),
     }
+
+def fetch_readme(full_name: str) -> str:
+    """Fetch and decode the README for a repo. Returns "" on any error."""
+    url = f"https://api.github.com/repos/{full_name}/readme"
+    try:
+        data = _request_with_retry(url)
+        raw_content = data.get("content", "")
+        decoded = base64.b64decode(raw_content).decode("utf-8", errors="replace")
+        return decoded[:50_000]
+    except Exception:
+        return ""
+    finally:
+        time.sleep(API_CALL_DELAY)
+
+
+def fetch_readmes(repos: list[dict]) -> list[dict]:
+    """Inject readme_content into each repo dict by calling the GitHub API."""
+    total = len(repos)
+    for i, repo in enumerate(repos, start=1):
+        print(f"Fetching READMEs: {i}/{total}", flush=True)
+        repo["readme_content"] = fetch_readme(repo["full_name"])
+    return repos
+
 
 # Searches GitHub for each topic that we want
 def fetch_all_topics(
