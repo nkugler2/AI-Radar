@@ -167,7 +167,7 @@ RAW_REPOS_COLUMNS = [
     "stars", "forks", "open_issues", "watchers", "size_kb",
     "created_at", "updated_at", "pushed_at", "fetched_at",
     "topics", "license", "homepage", "default_branch",
-    "is_fork", "is_archived",
+    "is_fork", "is_archived", "readme_content",
 ]
 
 RAW_REPOS_SCHEMA = f"""
@@ -319,6 +319,11 @@ def init_db(db_path: str | None = None) -> None:
 
         for ddl in ALL_SCHEMAS:
             con.execute(ddl)
+
+        # Migration: add readme_content to tables created before this column existed
+        con.execute(
+            "ALTER TABLE raw_repos ADD COLUMN IF NOT EXISTS readme_content TEXT"
+        )
     finally:
         con.close()
 

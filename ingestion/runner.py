@@ -35,33 +35,31 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# readme_content is in RAW_REPOS_SCHEMA but not in RAW_REPOS_COLUMNS (list used for inserts).
-# Extend locally so we can write the field without touching contracts/schema.py.
-_INSERT_COLUMNS = RAW_REPOS_COLUMNS + ["readme_content"]
-
-# Insert or replace repo data -> called an "upsert" (update + insert)
-# means if row already exist, delete and remake with new data. if doesn't exist, insert
-# means we can run this multiple times without things breaking
 INSERT_SQL = f"""
     INSERT OR REPLACE INTO {RAW_REPOS_TABLE} (
-        {', '.join(_INSERT_COLUMNS)}
+        {', '.join(RAW_REPOS_COLUMNS)}
     ) VALUES (
-        {', '.join('?' for _ in _INSERT_COLUMNS)}
+        {', '.join('?' for _ in RAW_REPOS_COLUMNS)}
     )
 """
 
-# Convert out repo dicitonary to a tuple
+
 def _row_tuple(repo: dict) -> tuple:
-    """Convert a parsed repo dict into an ordered tuple for INSERT.
+    return tuple(repo.get(col) for col in RAW_REPOS_COLUMNS)
 
-    Explanation: SQL needs values in a specific order (matching the RAW_REPOS_COLUMNS list). Our repo data is in a dictionary (unordered by nature). This function extracts values from the dictionary in the right order and returns them as a tuple.
 
-      `tuple(repo[col] for col in RAW_REPOS_COLUMNS)` is a generator expression — it loops through each column name and pulls the corresponding value from the repo dictionary, then wraps everything in a tuple.
-
-      Example: if repo = {"id": 123, "full_name": "user/repo", ...}, this returns (123, "user/repo", ...).
-
-    """
-    return tuple(repo[col] for col in RAW_REPOS_COLUMNS) + (repo.get("readme_content", ""),)
+def _load_cached_readmes(con, repo_ids: list[int]) -> dict[int, str]:
+    """Return {repo_id: readme_content} for repos fetched within the last 24 hours."""
+    if not repo_ids:
+        return {}
+    rows = con.execute("""
+        SELECT id, readme_content
+        FROM raw_repos
+        WHERE id = ANY(?)
+          AND readme_content IS NOT NULL
+          AND fetched_at >= NOW() - INTERVAL '24 hours'
+    """, [repo_ids]).fetchall()
+    return {row[0]: row[1] for row in rows}
 
 
 # Run the actual ingestion
@@ -94,8 +92,22 @@ def run_ingestion(language: str = "python", limit: int | None = None) -> int:
         log.warning("No repos fetched — nothing to write.")
         return 0
 
-    log.info("Fetching README content for %d repos...", len(repos))
-    repos = fetch_readmes(repos)
+    # Load cached READMEs from the last 24 hours so we skip those API calls
+    con = get_connection()
+    cached = _load_cached_readmes(con, [r["id"] for r in repos])
+    con.close()
+
+    for repo in repos:
+        if repo["id"] in cached:
+            repo["readme_content"] = cached[repo["id"]]
+
+    uncached = [r for r in repos if "readme_content" not in r]
+    log.info("README cache: %d cached, %d to fetch", len(cached), len(uncached))
+
+    if uncached:
+        uncached = fetch_readmes(uncached)
+        fetched_map = {r["id"]: r for r in uncached}
+        repos = [fetched_map.get(r["id"], r) for r in repos]
 
     # log the writing of data into duckdb
     log.info("Writing %d repos to %s...", len(repos), RAW_REPOS_TABLE)

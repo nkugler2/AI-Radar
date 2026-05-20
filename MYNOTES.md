@@ -8,6 +8,40 @@ tags: []
 
 This note will act as a Changelog and a notes repository to understand what my agents are doing, when, and why
 
+## 05-19-2026 - Running the 4 agent loop
+
+I was making signifianct changes to the app today, recomended of course by AI. Here is a summary of the agents
+
+Let me see if I can grab what was done for A and B as well
+
+**Agent C**
+ingestion/github_client.py
+
+- Added import base64
+- Added fetch_readme(full_name) — calls GET /repos/{full_name}/readme, base64-decodes the content field, truncates to 50,000 chars, returns "" on any error (404, network,
+  etc.), always sleeps API_CALL_DELAY in the finally block
+- Added fetch_readmes(repos) — loops through the repo list, calls fetch_readme per repo, prints "Fetching READMEs: N/total" progress, injects readme_content into each dict
+
+ingestion/runner.py
+
+- Imported fetch_readmes
+- Added \_INSERT_COLUMNS = RAW_REPOS_COLUMNS + ["readme_content"] — necessary because RAW_REPOS_COLUMNS in schema.py doesn't include readme_content even though the SQL DDL
+  does; this extends it locally without touching contracts/schema.py
+- Updated INSERT_SQL to use \_INSERT_COLUMNS
+- Updated \_row_tuple to append repo.get("readme_content", "") at the end (matching the column order in the schema)
+- Added repos = fetch_readmes(repos) call in run_ingestion between fetch_all_topics and the DB write step
+
+**Agent D**
+
+1. Import — added RAW_CONTRIBUTORS_TABLE to the contracts.schema import (line 20).
+2. load_contributors(repo_id) (lines 42–59) — @st.cache_data(ttl=300) function that queries raw_contributors for a given repo_id, ordered by contributions descending, limited
+   to 10, returning a Polars DataFrame with login and contributions columns.
+3. show_repo_detail() updates:
+   - GitHub link (line 68) — st.link_button at the very top using full_name.
+   - Topic badges (lines 82–83) — replaced ', '.join(topics) with backtick-wrapped inline code pills.
+   - Top Contributors (lines 114–119) — subheader + load_contributors(repo_row['id']) call; falls back to "No contributor data." if empty.
+   - README expander (lines 121–126) — st.expander("README", expanded=True) with st.markdown(readme_content) or a caption fallback.
+
 ## 05-08-2026 - Changes to the dashboard
 
 ### Steps taken today
