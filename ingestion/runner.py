@@ -23,7 +23,7 @@ from contracts.schema import (
     init_db,
     get_connection,
 )
-from ingestion.github_client import fetch_all_topics
+from ingestion.github_client import fetch_all_topics, fetch_readmes
 
 # basicConfig sets up logging for the entire program:
 #    - level=logging.INFO — show INFO messages and above (INFO, WARNING, ERROR). DEBUG messages are hidden.
@@ -35,14 +35,18 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+# readme_content is in RAW_REPOS_SCHEMA but not in RAW_REPOS_COLUMNS (list used for inserts).
+# Extend locally so we can write the field without touching contracts/schema.py.
+_INSERT_COLUMNS = RAW_REPOS_COLUMNS + ["readme_content"]
+
 # Insert or replace repo data -> called an "upsert" (update + insert)
 # means if row already exist, delete and remake with new data. if doesn't exist, insert
 # means we can run this multiple times without things breaking
 INSERT_SQL = f"""
     INSERT OR REPLACE INTO {RAW_REPOS_TABLE} (
-        {', '.join(RAW_REPOS_COLUMNS)}
+        {', '.join(_INSERT_COLUMNS)}
     ) VALUES (
-        {', '.join('?' for _ in RAW_REPOS_COLUMNS)}
+        {', '.join('?' for _ in _INSERT_COLUMNS)}
     )
 """
 
@@ -57,7 +61,7 @@ def _row_tuple(repo: dict) -> tuple:
       Example: if repo = {"id": 123, "full_name": "user/repo", ...}, this returns (123, "user/repo", ...).
 
     """
-    return tuple(repo[col] for col in RAW_REPOS_COLUMNS)
+    return tuple(repo[col] for col in RAW_REPOS_COLUMNS) + (repo.get("readme_content", ""),)
 
 
 # Run the actual ingestion
@@ -89,6 +93,9 @@ def run_ingestion(language: str = "python", limit: int | None = None) -> int:
     if not repos:
         log.warning("No repos fetched — nothing to write.")
         return 0
+
+    log.info("Fetching README content for %d repos...", len(repos))
+    repos = fetch_readmes(repos)
 
     # log the writing of data into duckdb
     log.info("Writing %d repos to %s...", len(repos), RAW_REPOS_TABLE)
