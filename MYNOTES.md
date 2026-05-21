@@ -10,9 +10,13 @@ This note will act as a Changelog and a notes repository to understand what my a
 
 ## 05-19-2026 - Running the 4 agent loop
 
+### Steps taken today
+
 I was making signifianct changes to the app today, recomended of course by AI. Here is a summary of the agents
 
 Let me see if I can grab what was done for A and B as well
+
+- couldn't find, but could find C and D
 
 **Agent C**
 ingestion/github_client.py
@@ -41,6 +45,18 @@ ingestion/runner.py
    - Topic badges (lines 82–83) — replaced ', '.join(topics) with backtick-wrapped inline code pills.
    - Top Contributors (lines 114–119) — subheader + load_contributors(repo_row['id']) call; falls back to "No contributor data." if empty.
    - README expander (lines 121–126) — st.expander("README", expanded=True) with st.markdown(readme_content) or a caption fallback.
+
+There was a bug in this implemntation, specifically when trying to write the README.md files to the database. The agent never changed the schema.py, since it was told not to do that, but that meant there was a column that should have been there but wasn't.
+
+I changed that, and I also implemnted a very basic cache system, where it does not download any README.md files if that repo was last read from in the last 24 hours. This way, I can do multiple runs in a day all using the same README.md.
+
+### Next Steps
+
+There are a couple of things that I need to test:
+
+0. Restart the pipeline (it failed last time but I think I fixed it)
+1. Test that the pipeline works, and that it completes even after the changes I made to implement readme.md files being downloaded.
+2. test how the dashboard looks and functions with the readme changes and other dashboard changes
 
 ## 05-08-2026 - Changes to the dashboard
 
