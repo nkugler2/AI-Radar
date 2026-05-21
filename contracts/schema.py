@@ -319,15 +319,6 @@ def init_db(db_path: str | None = None) -> None:
 
         for ddl in ALL_SCHEMAS:
             con.execute(ddl)
-
-        # Migration: add readme_content to tables created before this column existed
-        # Can get rid of this in the future
-        con.execute(
-            "ALTER TABLE raw_repos ADD COLUMN IF NOT EXISTS readme_content TEXT"
-        )
-        con.execute(
-            "ALTER TABLE repos ADD COLUMN IF NOT EXISTS readme_content TEXT"
-        )
     finally:
         con.close()
 
