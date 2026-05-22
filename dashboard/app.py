@@ -15,11 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import re
 
+import duckdb
 import polars as pl
 import plotly.express as px
 import streamlit as st
 
-from contracts.schema import DB_PATH, REPOS_TABLE, RAW_CONTRIBUTORS_TABLE, get_connection
+from contracts.schema import DB_PATH, PARQUET_PATH, REPOS_TABLE, RAW_CONTRIBUTORS_TABLE, get_connection
 
 
 # ---------------------------------------------------------------------------
@@ -27,23 +28,39 @@ from contracts.schema import DB_PATH, REPOS_TABLE, RAW_CONTRIBUTORS_TABLE, get_c
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def load_repos() -> pl.DataFrame:
-    """Fetch every row from the repos table into a Polars DataFrame."""
-    con = get_connection(read_only=True)
-    try:
-        result = con.execute(f"SELECT * FROM {REPOS_TABLE}").fetchall()
-        columns = [desc[0] for desc in con.description]
-    finally:
-        con.close()
+    """Fetch repos — from DuckDB locally, from Parquet on Streamlit Cloud."""
+    db_exists = Path(DB_PATH).exists()
+    parquet_exists = Path(PARQUET_PATH).exists()
+
+    if db_exists:
+        con = get_connection(read_only=True)
+        try:
+            result = con.execute(f"SELECT * FROM {REPOS_TABLE}").fetchall()
+            columns = [desc[0] for desc in con.description]
+        finally:
+            con.close()
+    elif parquet_exists:
+        con = duckdb.connect()
+        try:
+            result = con.execute(
+                f"SELECT * FROM read_parquet('{PARQUET_PATH}')"
+            ).fetchall()
+            columns = [desc[0] for desc in con.description]
+        finally:
+            con.close()
+    else:
+        return pl.DataFrame()
 
     if not result:
         return pl.DataFrame()
-
     return pl.DataFrame(dict(zip(columns, zip(*result))))
 
 
 @st.cache_data(ttl=300)
 def load_contributors(repo_id: int) -> pl.DataFrame:
     """Fetch top 10 contributors for a repo from raw_contributors."""
+    if not Path(DB_PATH).exists():
+        return pl.DataFrame({"login": [], "contributions": []})
     con = get_connection(read_only=True)
     try:
         result = con.execute(

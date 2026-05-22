@@ -9,7 +9,11 @@ Orchestrates the full AI Radar pipeline:
 
 import logging
 import sys
+from pathlib import Path
 
+import duckdb
+
+from contracts.schema import DB_PATH, PARQUET_PATH, REPOS_TABLE
 from ingestion.runner import run_ingestion
 from transform.metrics import run as run_transform
 
@@ -40,6 +44,19 @@ def main():
     log.info("-" * 70)
     transform_count = run_transform()
     log.info("Transform complete: %d repos cleaned, scored, and written to repos.", transform_count)
+
+    # Step 3: Export repos table to Parquet for Streamlit Cloud
+    log.info("")
+    log.info("STEP 3: Exporting repos table to Parquet...")
+    log.info("-" * 70)
+    Path(PARQUET_PATH).parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(DB_PATH, read_only=True)
+    try:
+        con.execute(f"COPY {REPOS_TABLE} TO '{PARQUET_PATH}' (FORMAT PARQUET)")
+        parquet_size = Path(PARQUET_PATH).stat().st_size / 1024
+        log.info("Exported repos to %s (%.1f KB)", PARQUET_PATH, parquet_size)
+    finally:
+        con.close()
 
     # Summary and next steps
     log.info("")
