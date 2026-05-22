@@ -13,6 +13,8 @@ from pathlib import Path
 # Ensure project root is importable so `contracts` resolves
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import re
+
 import polars as pl
 import plotly.express as px
 import streamlit as st
@@ -121,7 +123,20 @@ def show_repo_detail(repo_row: dict) -> None:
     with st.expander("README", expanded=True):
         readme = repo_row.get("readme_content")
         if readme:
-            st.markdown(readme)
+            full_name = repo_row.get("full_name", "")
+            if full_name:
+                base = f"https://raw.githubusercontent.com/{full_name}/HEAD/"
+                readme = re.sub(
+                    r'!\[([^\]]*)\]\((?!https?://)([^)]+)\)',
+                    lambda m: f'![{m.group(1)}]({base}{m.group(2)})',
+                    readme,
+                )
+                readme = re.sub(
+                    r'(<img[^>]*?\bsrc=")(?!https?://)([^"]+)(")',
+                    lambda m: f'{m.group(1)}{base}{m.group(2)}{m.group(3)}',
+                    readme,
+                )
+            st.markdown(readme, unsafe_allow_html=True)
         else:
             st.caption("No README available for this repo.")
 
