@@ -1,5 +1,5 @@
 name: Update AI Radar Data
-
+# Can be run in Github
 on:
   schedule:
     - cron: "0 6 * * *"
