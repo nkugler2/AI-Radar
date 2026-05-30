@@ -8,6 +8,37 @@ tags: []
 
 This note will act as a Changelog and a notes repository to understand what my agents are doing, when, and why
 
+## 05-21-2026 - On GitHub, with a GitHub Action, in a Streamlit Cloud hosted Dashboard
+
+### Steps taken today
+
+This is the culmination of many of the changes I made 2 days ago. It includes:
+
+1. Making sure that README files are actually seen in the dashboard, which requried a breif database migration
+2. Fixed a bug with the README files where HTML was not rendering correctly
+3. Made changes to files for the move to streamlit cloud, github, and github actions, the changes are listed below
+
+| File                                | Action                                                       |
+| ----------------------------------- | ------------------------------------------------------------ |
+| `.python-version`                   | Change 4.14 → 3.12 (Streamlit Cloud max)                     |
+| `pyproject.toml`                    | Change `requires-python = ">=4.14"` → `>=3.12`               |
+| `uv.lock`                           | Regenerate with `uv lock` after pyproject change             |
+| `contracts/schema.py`               | Add `PARQUET_PATH` constant after `DB_PATH`                  |
+| `main.py`                           | Add Step 4: export repos table to Parquet via DuckDB COPY    |
+| `.gitignore`                        | Replace `data/` with `data/*.duckdb` (so Parquet is tracked) |
+| `dashboard/app.py`                  | Dual-mode `load_repos()` + guarded `load_contributors()`     |
+| `requirements.txt`                  | Create for Streamlit Cloud (`uv export --no-hashes`)         |
+| `.github/workflows/update-data.yml` | Create: daily cron + manual trigger                          |
+
+4. We also set up and tested the github actions
+5. The dashboard is not hosted on streamlit, at https://ai-radar-dashboard.streamlit.app/
+
+### Next Steps
+
+Small changes:
+
+1. Change slider for dates to some sort of drop down, just some easier way to do it
+
 ## 05-19-2026 - Running the 4 agent loop
 
 ### Steps taken today

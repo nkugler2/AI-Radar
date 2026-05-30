@@ -14,16 +14,18 @@ from __future__ import annotations
 
 import logging
 import sys
+from datetime import datetime, timedelta
 
 # Values from the contracts/schema file, should not be hardcorded here
 from contracts.schema import (
     RAW_REPOS_TABLE,
     RAW_REPOS_COLUMNS,
     RAW_REPOS_SCHEMA,
+    SearchTopic,
     init_db,
     get_connection,
 )
-from ingestion.github_client import fetch_all_topics, fetch_readmes
+from ingestion.github_client import fetch_all_topics, fetch_readmes, search_repos, parse_repo
 
 # basicConfig sets up logging for the entire program:
 #    - level=logging.INFO — show INFO messages and above (INFO, WARNING, ERROR). DEBUG messages are hidden.
@@ -62,6 +64,44 @@ def _load_cached_readmes(con, repo_ids: list[int]) -> dict[int, str]:
     return {row[0]: row[1] for row in rows}
 
 
+def _fetch_recent_rising(
+    language: str,
+    lookback_days: int = 60,
+    top_n: int = 100,
+) -> list[dict]:
+    """Search for recently-created repos, pre-score by stars/day, return top_n.
+
+    All fields needed to score momentum (stars, forks, open_issues, pushed_at,
+    created_at) come from the search API response itself — no extra API calls.
+    """
+    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    seen: set[int] = set()
+    candidates: list[dict] = []
+
+    for topic in SearchTopic:
+        log.info("Recent-rising search: topic=%s created_after=%s", topic.value, cutoff)
+        raw_items = search_repos(topic.value, language=language, limit=200, created_after=cutoff)
+        for item in raw_items:
+            repo = parse_repo(item)
+            if repo["id"] not in seen:
+                seen.add(repo["id"])
+                candidates.append(repo)
+
+    now = datetime.utcnow()
+
+    def _proxy_score(r: dict) -> float:
+        created = r.get("created_at")
+        if not created:
+            return 0.0
+        created_dt = datetime.fromisoformat(created.replace("Z", "+00:00")).replace(tzinfo=None)
+        age_days = max((now - created_dt).days, 1)
+        return r.get("stars", 0) / age_days
+
+    candidates.sort(key=_proxy_score, reverse=True)
+    log.info("Recent-rising: %d candidates across all topics, keeping top %d", len(candidates), top_n)
+    return candidates[:top_n]
+
+
 # Run the actual ingestion
 def run_ingestion(language: str = "python", limit: int | None = None) -> int:
     """Run a full ingestion cycle.
@@ -91,6 +131,18 @@ def run_ingestion(language: str = "python", limit: int | None = None) -> int:
     if not repos:
         log.warning("No repos fetched — nothing to write.")
         return 0
+
+    # Second pass: find recently-created repos with high momentum, pre-scored
+    # before README fetches so we only pull READMEs for the top performers.
+    rising = _fetch_recent_rising(language=language)
+    existing_ids = {r["id"] for r in repos}
+    new_repos = [r for r in rising if r["id"] not in existing_ids]
+    log.info(
+        "Recent-rising: %d top candidates, %d are new (not already in top-stars list)",
+        len(rising),
+        len(new_repos),
+    )
+    repos.extend(new_repos)
 
     # Load cached READMEs from the last 24 hours so we skip those API calls
     con = get_connection()

@@ -130,6 +130,7 @@ def search_repos(
     topic: str,
     language: str = Language.PYTHON.value,              # default set by contracts/schema
     limit: int = DEFAULT_REPO_LIMIT,                    # default set by contracts/schema
+    created_after: str | None = None,                   # ISO date string e.g. "2026-03-30"
 ) -> list[dict]:
     """Search GitHub for repos matching a topic + language filter.
 
@@ -139,6 +140,8 @@ def search_repos(
     """
     # Format our query like you would in GitHub
     query = f"topic:{topic} language:{language}"
+    if created_after:
+        query += f" created:>{created_after}"
     # Make an empty list for repositories
     collected: list[dict] = []
     # Start on page 1 of GitHubs pagenation
