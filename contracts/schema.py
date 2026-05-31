@@ -52,12 +52,43 @@ SNAPSHOTS_TABLE = "repo_snapshots"   # daily snapshots for time-series
 # ---------------------------------------------------------------------------
 class Language(str, Enum):
     """Supported languages for repo discovery. Add new languages here to
-    expand coverage — the ingestion agent reads this list dynamically."""
+    expand coverage — the ingestion agent reads this list dynamically.
+
+    Each value is exactly what GitHub expects in the ``language:`` search
+    qualifier (case-insensitive). Multi-word values such as
+    ``"jupyter notebook"`` are quoted automatically by ``language_query_value``.
+    Order matters: languages are listed roughly by how common AI/ML repos are,
+    so the most relevant ecosystems are ingested first.
+    """
     PYTHON = "python"
-    # Future:
-    # JAVASCRIPT = "javascript"
-    # TYPESCRIPT = "typescript"
-    # RUST = "rust"
+    JAVASCRIPT = "javascript"
+    TYPESCRIPT = "typescript"
+    CPP = "c++"
+    RUST = "rust"
+    GO = "go"
+    JUPYTER_NOTEBOOK = "jupyter notebook"
+    CSHARP = "c#"
+    JAVA = "java"
+
+
+# The default set of languages ingested when no explicit list is given.
+# It is simply every value in the Language enum, in declaration order.
+DEFAULT_LANGUAGES: list[str] = [lang.value for lang in Language]
+
+
+def language_query_value(language: str) -> str:
+    """Format a language string for the GitHub ``language:`` search qualifier.
+
+    GitHub requires multi-word language names (e.g. ``Jupyter Notebook``) to be
+    wrapped in double quotes inside the query, while single-word names must NOT
+    be quoted. This helper centralizes that rule so no agent has to hardcode it.
+
+    >>> language_query_value("python")
+    'python'
+    >>> language_query_value("jupyter notebook")
+    '"jupyter notebook"'
+    """
+    return f'"{language}"' if " " in language.strip() else language
 
 
 # gives my code easy to use names for the strings that GitHub wants

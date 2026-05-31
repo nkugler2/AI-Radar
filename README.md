@@ -1,6 +1,6 @@
 # README.md
 
-A data pipeline and dashboard for tracking the health and momentum of popular AI Python projects on GitHub. AI Radar ingests repository metadata from the GitHub API, runs analytial transforms, and surfaces insights through an interactive Streamlit dashboard — showing which projects are gaining traction, which are well-maintained, and how the AI open source ecosystem is evolving.
+A data pipeline and dashboard for tracking the health and momentum of popular AI projects on GitHub across many languages (Python, JavaScript/TypeScript, C++, Rust, Go, and more). AI Radar ingests repository metadata from the GitHub API, runs analytial transforms, and surfaces insights through an interactive Streamlit dashboard — showing which projects are gaining traction, which are well-maintained, and how the AI open source ecosystem is evolving.
 
 Built as a learning project for multi-agent agentic coding using [Claude Squad](https://github.com/smtg-ai/claude-squad), where three Claude Code instances work in parallel across isolated git worktrees.
 
@@ -8,7 +8,7 @@ Built as a learning project for multi-agent agentic coding using [Claude Squad](
 
 ## What it does
 
-- Searches GitHub for AI-related Python repositories using topic tags like `llm`, `rag`, `agents`, and `computer-vision`
+- Searches GitHub for AI-related repositories across many languages (Python, JavaScript/TypeScript, C++, Rust, Go, Jupyter Notebook, C#, Java) using topic tags like `llm`, `rag`, `agents`, and `computer-vision`
 - Fetches metadata per repo: stars, forks, open issues, and last push date
 - Computes derived metrics: momentum score (stars relative to project age), maintenance score (push recency and issue closure rate), and days since last push
 - Categorizes repos by their GitHub topic tags
@@ -160,7 +160,7 @@ The three layers — ingestion, transform, and dashboard — have clean boundari
 
 The architecture is designed to grow without touching existing layers.
 
-**Add JavaScript/TypeScript repos** — add values to the `Language` enum or `SearchTopic` enum in `contracts/schema.py`. The ingestion agent reads these dynamically, so no transform or dashboard changes needed.
+**Add more languages** — add values to the `Language` enum in `contracts/schema.py` (the value must match GitHub's `language:` qualifier; multi-word names are quoted automatically). The ingestion agent reads `DEFAULT_LANGUAGES` dynamically, and the dashboard's language filter is populated from the data, so no transform or dashboard changes are needed.
 
 **Add a second data source** — implement a new ingestion module (e.g. `ingestion/pypi_client.py`) that writes to the same `raw_repos` schema. The transform and dashboard layers are unaffected.
 
@@ -172,7 +172,7 @@ The architecture is designed to grow without touching existing layers.
 
 ## Roadmap
 
-- [ ] Multi-language support (JavaScript/TypeScript, Rust, Go)
+- [x] Multi-language support (JavaScript/TypeScript, C++, Rust, Go, Jupyter Notebook, C#, Java)
 - [ ] Contributor data ingestion and scoring
 - [ ] Release cadence tracking
 - [ ] Time-series snapshots for trend tracking

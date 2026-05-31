@@ -23,9 +23,11 @@ import os
 from contracts.schema import (
     API_CALL_DELAY,
     API_MAX_RETRIES,
+    DEFAULT_LANGUAGES,
     DEFAULT_REPO_LIMIT,
     Language,
     SearchTopic,
+    language_query_value,
 )
 
 # -- ------------------------------------------------
@@ -138,8 +140,9 @@ def search_repos(
     - Each dictionary is one repo
 
     """
-    # Format our query like you would in GitHub
-    query = f"topic:{topic} language:{language}"
+    # Format our query like you would in GitHub. Multi-word languages such as
+    # "jupyter notebook" must be quoted — language_query_value handles that.
+    query = f"topic:{topic} language:{language_query_value(language)}"
     if created_after:
         query += f" created:>{created_after}"
     # Make an empty list for repositories
@@ -230,38 +233,57 @@ def fetch_readmes(repos: list[dict]) -> list[dict]:
     return repos
 
 
-# Searches GitHub for each topic that we want
+# Searches GitHub for each (language, topic) combination that we want
 def fetch_all_topics(
-    language: str = Language.PYTHON.value,
+    languages: list[str] | None = None,
     limit: int = DEFAULT_REPO_LIMIT,
 ) -> list[dict]:
-    """Iterate over every SearchTopic, search GitHub, parse results,
-    and return deduplicated parsed repo rows."""
+    """Iterate over every language × SearchTopic combination, search GitHub,
+    parse results, and return deduplicated parsed repo rows.
+
+    Parameters:
+      - languages — list of GitHub language names to search. When None, every
+        language configured in ``DEFAULT_LANGUAGES`` (contracts/schema.py) is used.
+      - limit — max repos to pull per (language, topic) query.
+
+    Deduplication is global across all languages and topics: a repo is only
+    returned once even if it matches several queries (its own ``language`` field
+    from the API still reflects GitHub's primary language for that repo).
+    """
+    # Default to the full configured language set when none is provided
+    languages = languages or DEFAULT_LANGUAGES
+
     # a set that includes unique repo ID's we have seen, stopping duplication
     seen_ids: set[int] = set()
     # our final list of parsed repos
     results: list[dict] = []
 
-    # for each topic from our topics in contracts/schema (we grab with topic.value)
-    for topic in SearchTopic:
-        # log what we are going to do
-        log.info(
-            "Searching topic=%s language=%s limit=%d", topic.value, language, limit
-        )
-        # Call search repos to get raw data
-        raw_items = search_repos(topic.value, language=language, limit=limit)
-        # for each repo from GitHub
-        for item in raw_items:
-            # use the parse_repo function to parse it down to our cleaned set
-            repo = parse_repo(item)
-            # Check to see if we have the id already, to stop duplicates
-            if repo["id"] not in seen_ids:
-                # If not, add to out set of seen ids
-                seen_ids.add(repo["id"])
-                # And then append our cleaned data into our list that is returned
-                results.append(repo)
+    # for each language, then each topic from our topics in contracts/schema
+    for language in languages:
+        for topic in SearchTopic:
+            # log what we are going to do
+            log.info(
+                "Searching topic=%s language=%s limit=%d", topic.value, language, limit
+            )
+            # Call search repos to get raw data
+            raw_items = search_repos(topic.value, language=language, limit=limit)
+            # for each repo from GitHub
+            for item in raw_items:
+                # use the parse_repo function to parse it down to our cleaned set
+                repo = parse_repo(item)
+                # Check to see if we have the id already, to stop duplicates
+                if repo["id"] not in seen_ids:
+                    # If not, add to out set of seen ids
+                    seen_ids.add(repo["id"])
+                    # And then append our cleaned data into our list that is returned
+                    results.append(repo)
 
     # Final logging information
-    log.info("Fetched %d unique repos across %d topics", len(results), len(SearchTopic))
+    log.info(
+        "Fetched %d unique repos across %d languages × %d topics",
+        len(results),
+        len(languages),
+        len(SearchTopic),
+    )
     # return our completed list of repository data
     return results
