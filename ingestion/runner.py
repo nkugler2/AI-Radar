@@ -22,6 +22,7 @@ from contracts.schema import (
     RAW_REPOS_TABLE,
     RAW_REPOS_COLUMNS,
     RAW_REPOS_SCHEMA,
+    RECENT_RISING_LANGUAGES,
     SearchTopic,
     init_db,
     get_connection,
@@ -66,7 +67,7 @@ def _load_cached_readmes(con, repo_ids: list[int]) -> dict[int, str]:
 
 
 def _fetch_recent_rising(
-    languages: list[str],
+    languages: list[str] | None = None,
     lookback_days: int = 60,
     top_n: int = 100,
 ) -> list[dict]:
@@ -76,7 +77,12 @@ def _fetch_recent_rising(
     supported ecosystem are considered. All fields needed to score momentum
     (stars, forks, open_issues, pushed_at, created_at) come from the search API
     response itself — no extra API calls.
+
+    Defaults to RECENT_RISING_LANGUAGES (a subset of DEFAULT_LANGUAGES) because
+    new AI repos are overwhelmingly Python / JS / TS — running this pass against
+    every supported language doubles the Search-API budget for marginal coverage.
     """
+    languages = languages or RECENT_RISING_LANGUAGES
     cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
     seen: set[int] = set()
     candidates: list[dict] = []
@@ -156,7 +162,9 @@ def run_ingestion(
 
     # Second pass: find recently-created repos with high momentum, pre-scored
     # before README fetches so we only pull READMEs for the top performers.
-    rising = _fetch_recent_rising(languages=languages)
+    # Uses RECENT_RISING_LANGUAGES (a subset) to stay under the Search API
+    # 30 req/min cap — see contracts/schema.py for the rationale.
+    rising = _fetch_recent_rising()
     existing_ids = {r["id"] for r in repos}
     new_repos = [r for r in rising if r["id"] not in existing_ids]
     log.info(

@@ -111,11 +111,27 @@ class SearchTopic(str, Enum):
 # How many repos to pull per search query (GitHub caps at 1000 total results)
 DEFAULT_REPO_LIMIT = 150
 
-# Rate-limit safety: pause (seconds) between paginated API calls
-API_CALL_DELAY = 0.75
+# Rate-limit safety: pause (seconds) between paginated API calls.
+# The GitHub Search API has its own bucket capped at 30 req/min for
+# authenticated users, separate from the 5000 req/hour core limit.
+# That's why search and core use different delays here.
+API_CALL_DELAY = 0.75        # core API (READMEs, repo metadata)
+SEARCH_API_DELAY = 2.2       # search API — stays under 30 req/min with headroom
 
 # Maximum retries on 403 / rate-limit responses before giving up
 API_MAX_RETRIES = 3
+
+# Proactive rate-limit guard: when X-RateLimit-Remaining drops to or below
+# this number, sleep until X-RateLimit-Reset before making the next call.
+# Prevents reactive 403/429 round-trips and secondary "abuse" trips.
+RATE_LIMIT_THRESHOLD = 3
+
+# Languages searched in the recent-rising pass. Kept as a separate constant
+# (rather than just reusing DEFAULT_LANGUAGES) so it can be scoped down again
+# if Search-API budget becomes tight — e.g. set to [PYTHON, JAVASCRIPT,
+# TYPESCRIPT] to cut this pass's API cost by ~⅔ at the cost of missing
+# rising repos in the longer-tail ecosystems.
+RECENT_RISING_LANGUAGES: list[str] = DEFAULT_LANGUAGES
 
 
 # ---------------------------------------------------------------------------

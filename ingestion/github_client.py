@@ -26,6 +26,8 @@ from contracts.schema import (
     DEFAULT_LANGUAGES,
     DEFAULT_REPO_LIMIT,
     Language,
+    RATE_LIMIT_THRESHOLD,
+    SEARCH_API_DELAY,
     SearchTopic,
     language_query_value,
 )
@@ -42,6 +44,52 @@ log = logging.getLogger(__name__)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 SEARCH_URL = "https://api.github.com/search/repositories"
 PER_PAGE = 100  # GitHub max per page
+
+# Tracks the last-seen rate-limit state per API bucket ("search" vs "core").
+# GitHub returns rate-limit headers on every response; we cache them so the
+# next request can sleep proactively if we're about to exhaust the bucket.
+_rate_limit_state: dict[str, dict[str, int]] = {}
+
+
+def _bucket_for(url: str) -> str:
+    """GitHub has separate rate-limit buckets for search vs everything else."""
+    return "search" if "/search/" in url else "core"
+
+
+def _update_rate_limit_state(url: str, response: requests.Response) -> None:
+    """Cache X-RateLimit-Remaining / X-RateLimit-Reset for the next call."""
+    remaining = response.headers.get("X-RateLimit-Remaining")
+    reset = response.headers.get("X-RateLimit-Reset")
+    if remaining is None or reset is None:
+        return
+    try:
+        _rate_limit_state[_bucket_for(url)] = {
+            "remaining": int(remaining),
+            "reset": int(reset),
+        }
+    except ValueError:
+        pass
+
+
+def _wait_if_near_limit(url: str) -> None:
+    """Sleep until the bucket resets if we're at or below the threshold.
+
+    Avoids tripping the reactive 403/429 path and the secondary "abuse" limit
+    that fires on bursty patterns even when the primary quota looks healthy.
+    """
+    state = _rate_limit_state.get(_bucket_for(url))
+    if not state or state["remaining"] > RATE_LIMIT_THRESHOLD:
+        return
+    wait = max(state["reset"] - int(time.time()) + 1, 0)
+    if wait <= 0:
+        return
+    log.warning(
+        "Approaching %s rate limit (%d remaining). Sleeping %ds until reset.",
+        _bucket_for(url),
+        state["remaining"],
+        wait,
+    )
+    time.sleep(wait)
 
 
 # We need a header for our request, with auth for increased rate limits
@@ -96,10 +144,18 @@ def _request_with_retry(url: str, params: dict | None = None) -> dict:
     """
     #
     for attempt in range(1, API_MAX_RETRIES + 1):
+        # Proactively wait if the last response said we're near the limit
+        _wait_if_near_limit(url)
+
         resp = requests.get(url, headers=_headers(), params=params, timeout=30)
+        _update_rate_limit_state(url, resp)
 
         # put the response to json if everything is ok
         if resp.status_code == 200:
+            # Per-bucket pacing AFTER every successful call — guarantees a
+            # gap between any two requests in the same bucket, even when
+            # callers chain queries back-to-back.
+            time.sleep(SEARCH_API_DELAY if _bucket_for(url) == "search" else API_CALL_DELAY)
             return resp.json()
 
         # if something with rate limiting is wrong, retry and log
@@ -172,8 +228,7 @@ def search_repos(
         collected.extend(items)
         # Go to the next page
         page += 1
-        # Sleep a little to be polite to the servers
-        time.sleep(API_CALL_DELAY)
+        # Pacing happens inside _request_with_retry — no extra sleep needed here.
 
     # only grab up to the limit, even if we got more than that from a page
     return collected[:limit]
@@ -220,8 +275,6 @@ def fetch_readme(full_name: str) -> str:
         return decoded[:50_000]
     except Exception:
         return ""
-    finally:
-        time.sleep(API_CALL_DELAY)
 
 
 def fetch_readmes(repos: list[dict]) -> list[dict]:
