@@ -111,6 +111,10 @@ class SearchTopic(str, Enum):
 # How many repos to pull per search query (GitHub caps at 1000 total results)
 DEFAULT_REPO_LIMIT = 150
 
+# Per-language limit for the weekly deep pass. Higher than DEFAULT_REPO_LIMIT
+# because the weekly job has a 60-minute budget and benefits from broader coverage.
+DEEP_REPO_LIMIT = 400
+
 # Rate-limit safety: pause (seconds) between paginated API calls.
 # The GitHub Search API has its own bucket capped at 30 req/min for
 # authenticated users, separate from the 5000 req/hour core limit.
