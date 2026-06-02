@@ -119,60 +119,61 @@ def _fetch_recent_rising(
 
 # Run the actual ingestion
 def run_ingestion(
+    mode: str = "full",
     languages: list[str] | None = None,
     limit: int | None = None,
 ) -> int:
     """Run a full ingestion cycle.
 
     1. Ensure the DB and tables exist.
-    2. Fetch repos from GitHub for every configured language × topic.
+    2. Fetch repos from GitHub based on mode.
     3. Upsert rows into raw_repos.
 
     Parameters:
+      - mode — controls which passes run:
+          "full"        — top-stars pass + recent-rising pass (default)
+          "deep_only"   — top-stars pass only (for the weekly workflow)
+          "rising_only" — recent-rising pass only (for the daily workflow)
       - languages — list of GitHub language names to ingest. When None, every
         language in ``DEFAULT_LANGUAGES`` (contracts/schema.py) is used.
       - limit — max repos per (language, topic) query.
 
     Returns the number of rows written as an integer.
     """
-    # Fetch the number of repos allowed. If not provide, use the setting defined in the contracts/schema.py file
     from contracts.schema import DEFAULT_REPO_LIMIT
 
     limit = limit or DEFAULT_REPO_LIMIT
-    # Default to the full configured language set when none is provided
     languages = languages or DEFAULT_LANGUAGES
 
-    # log db creation
     log.info("Initializing database...")
-    # create the db
     init_db()
 
-    # log the grabbing of repos
     log.info(
-        "Fetching repos from GitHub (languages=%s, limit=%d per language/topic)...",
-        languages, limit,
+        "Fetching repos from GitHub (mode=%s, languages=%s, limit=%d per language/topic)...",
+        mode, languages, limit,
     )
-    # the actual fetching of repos
-    repos = fetch_all_topics(languages=languages, limit=limit)
 
-    # log warning if nothing was fetched from github. It's not an error case, as the topics may be updated over time.
+    repos: list[dict] = []
+
+    # Top-stars pass — skipped in rising_only mode
+    if mode in ("full", "deep_only"):
+        repos = fetch_all_topics(languages=languages, limit=limit)
+
+    # Recent-rising pass — skipped in deep_only mode
+    if mode in ("full", "rising_only"):
+        rising = _fetch_recent_rising()
+        existing_ids = {r["id"] for r in repos}
+        new_repos = [r for r in rising if r["id"] not in existing_ids]
+        log.info(
+            "Recent-rising: %d top candidates, %d are new (not already in top-stars list)",
+            len(rising),
+            len(new_repos),
+        )
+        repos.extend(new_repos)
+
     if not repos:
         log.warning("No repos fetched — nothing to write.")
         return 0
-
-    # Second pass: find recently-created repos with high momentum, pre-scored
-    # before README fetches so we only pull READMEs for the top performers.
-    # Uses RECENT_RISING_LANGUAGES (a subset) to stay under the Search API
-    # 30 req/min cap — see contracts/schema.py for the rationale.
-    rising = _fetch_recent_rising()
-    existing_ids = {r["id"] for r in repos}
-    new_repos = [r for r in rising if r["id"] not in existing_ids]
-    log.info(
-        "Recent-rising: %d top candidates, %d are new (not already in top-stars list)",
-        len(rising),
-        len(new_repos),
-    )
-    repos.extend(new_repos)
 
     # Load cached READMEs from the last 24 hours so we skip those API calls
     con = get_connection()
