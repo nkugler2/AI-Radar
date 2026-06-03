@@ -17,3 +17,7 @@ data/*.duckdb
 
 # Mac Files
 .DS_Store
+
+# Clude files
+.claude/
+.claire/
