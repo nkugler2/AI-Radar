@@ -23,9 +23,13 @@ import os
 from contracts.schema import (
     API_CALL_DELAY,
     API_MAX_RETRIES,
+    DEFAULT_LANGUAGES,
     DEFAULT_REPO_LIMIT,
     Language,
+    RATE_LIMIT_THRESHOLD,
+    SEARCH_API_DELAY,
     SearchTopic,
+    language_query_value,
 )
 
 # -- ------------------------------------------------
@@ -40,6 +44,52 @@ log = logging.getLogger(__name__)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 SEARCH_URL = "https://api.github.com/search/repositories"
 PER_PAGE = 100  # GitHub max per page
+
+# Tracks the last-seen rate-limit state per API bucket ("search" vs "core").
+# GitHub returns rate-limit headers on every response; we cache them so the
+# next request can sleep proactively if we're about to exhaust the bucket.
+_rate_limit_state: dict[str, dict[str, int]] = {}
+
+
+def _bucket_for(url: str) -> str:
+    """GitHub has separate rate-limit buckets for search vs everything else."""
+    return "search" if "/search/" in url else "core"
+
+
+def _update_rate_limit_state(url: str, response: requests.Response) -> None:
+    """Cache X-RateLimit-Remaining / X-RateLimit-Reset for the next call."""
+    remaining = response.headers.get("X-RateLimit-Remaining")
+    reset = response.headers.get("X-RateLimit-Reset")
+    if remaining is None or reset is None:
+        return
+    try:
+        _rate_limit_state[_bucket_for(url)] = {
+            "remaining": int(remaining),
+            "reset": int(reset),
+        }
+    except ValueError:
+        pass
+
+
+def _wait_if_near_limit(url: str) -> None:
+    """Sleep until the bucket resets if we're at or below the threshold.
+
+    Avoids tripping the reactive 403/429 path and the secondary "abuse" limit
+    that fires on bursty patterns even when the primary quota looks healthy.
+    """
+    state = _rate_limit_state.get(_bucket_for(url))
+    if not state or state["remaining"] > RATE_LIMIT_THRESHOLD:
+        return
+    wait = max(state["reset"] - int(time.time()) + 1, 0)
+    if wait <= 0:
+        return
+    log.warning(
+        "Approaching %s rate limit (%d remaining). Sleeping %ds until reset.",
+        _bucket_for(url),
+        state["remaining"],
+        wait,
+    )
+    time.sleep(wait)
 
 
 # We need a header for our request, with auth for increased rate limits
@@ -94,10 +144,18 @@ def _request_with_retry(url: str, params: dict | None = None) -> dict:
     """
     #
     for attempt in range(1, API_MAX_RETRIES + 1):
+        # Proactively wait if the last response said we're near the limit
+        _wait_if_near_limit(url)
+
         resp = requests.get(url, headers=_headers(), params=params, timeout=30)
+        _update_rate_limit_state(url, resp)
 
         # put the response to json if everything is ok
         if resp.status_code == 200:
+            # Per-bucket pacing AFTER every successful call — guarantees a
+            # gap between any two requests in the same bucket, even when
+            # callers chain queries back-to-back.
+            time.sleep(SEARCH_API_DELAY if _bucket_for(url) == "search" else API_CALL_DELAY)
             return resp.json()
 
         # if something with rate limiting is wrong, retry and log
@@ -138,8 +196,9 @@ def search_repos(
     - Each dictionary is one repo
 
     """
-    # Format our query like you would in GitHub
-    query = f"topic:{topic} language:{language}"
+    # Format our query like you would in GitHub. Multi-word languages such as
+    # "jupyter notebook" must be quoted — language_query_value handles that.
+    query = f"topic:{topic} language:{language_query_value(language)}"
     if created_after:
         query += f" created:>{created_after}"
     # Make an empty list for repositories
@@ -169,8 +228,7 @@ def search_repos(
         collected.extend(items)
         # Go to the next page
         page += 1
-        # Sleep a little to be polite to the servers
-        time.sleep(API_CALL_DELAY)
+        # Pacing happens inside _request_with_retry — no extra sleep needed here.
 
     # only grab up to the limit, even if we got more than that from a page
     return collected[:limit]
@@ -217,8 +275,6 @@ def fetch_readme(full_name: str) -> str:
         return decoded[:50_000]
     except Exception:
         return ""
-    finally:
-        time.sleep(API_CALL_DELAY)
 
 
 def fetch_readmes(repos: list[dict]) -> list[dict]:
@@ -230,38 +286,57 @@ def fetch_readmes(repos: list[dict]) -> list[dict]:
     return repos
 
 
-# Searches GitHub for each topic that we want
+# Searches GitHub for each (language, topic) combination that we want
 def fetch_all_topics(
-    language: str = Language.PYTHON.value,
+    languages: list[str] | None = None,
     limit: int = DEFAULT_REPO_LIMIT,
 ) -> list[dict]:
-    """Iterate over every SearchTopic, search GitHub, parse results,
-    and return deduplicated parsed repo rows."""
+    """Iterate over every language × SearchTopic combination, search GitHub,
+    parse results, and return deduplicated parsed repo rows.
+
+    Parameters:
+      - languages — list of GitHub language names to search. When None, every
+        language configured in ``DEFAULT_LANGUAGES`` (contracts/schema.py) is used.
+      - limit — max repos to pull per (language, topic) query.
+
+    Deduplication is global across all languages and topics: a repo is only
+    returned once even if it matches several queries (its own ``language`` field
+    from the API still reflects GitHub's primary language for that repo).
+    """
+    # Default to the full configured language set when none is provided
+    languages = languages or DEFAULT_LANGUAGES
+
     # a set that includes unique repo ID's we have seen, stopping duplication
     seen_ids: set[int] = set()
     # our final list of parsed repos
     results: list[dict] = []
 
-    # for each topic from our topics in contracts/schema (we grab with topic.value)
-    for topic in SearchTopic:
-        # log what we are going to do
-        log.info(
-            "Searching topic=%s language=%s limit=%d", topic.value, language, limit
-        )
-        # Call search repos to get raw data
-        raw_items = search_repos(topic.value, language=language, limit=limit)
-        # for each repo from GitHub
-        for item in raw_items:
-            # use the parse_repo function to parse it down to our cleaned set
-            repo = parse_repo(item)
-            # Check to see if we have the id already, to stop duplicates
-            if repo["id"] not in seen_ids:
-                # If not, add to out set of seen ids
-                seen_ids.add(repo["id"])
-                # And then append our cleaned data into our list that is returned
-                results.append(repo)
+    # for each language, then each topic from our topics in contracts/schema
+    for language in languages:
+        for topic in SearchTopic:
+            # log what we are going to do
+            log.info(
+                "Searching topic=%s language=%s limit=%d", topic.value, language, limit
+            )
+            # Call search repos to get raw data
+            raw_items = search_repos(topic.value, language=language, limit=limit)
+            # for each repo from GitHub
+            for item in raw_items:
+                # use the parse_repo function to parse it down to our cleaned set
+                repo = parse_repo(item)
+                # Check to see if we have the id already, to stop duplicates
+                if repo["id"] not in seen_ids:
+                    # If not, add to out set of seen ids
+                    seen_ids.add(repo["id"])
+                    # And then append our cleaned data into our list that is returned
+                    results.append(repo)
 
     # Final logging information
-    log.info("Fetched %d unique repos across %d topics", len(results), len(SearchTopic))
+    log.info(
+        "Fetched %d unique repos across %d languages × %d topics",
+        len(results),
+        len(languages),
+        len(SearchTopic),
+    )
     # return our completed list of repository data
     return results

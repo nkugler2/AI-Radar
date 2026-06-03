@@ -27,15 +27,24 @@ log = logging.getLogger(__name__)
 
 def main():
     """Run the full pipeline: ingestion → transform → ready for dashboard."""
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode", default="full",
+        choices=["full", "rising_only", "deep_only"],
+        help="full=both passes, rising_only=recent repos only, deep_only=top-stars only",
+    )
+    args = parser.parse_args()
+
     log.info("=" * 70)
     log.info("AI Radar Pipeline Started")
     log.info("=" * 70)
 
     # Step 1: Ingestion
     log.info("")
-    log.info("STEP 1: Running ingestion...")
+    log.info("STEP 1: Running ingestion (mode=%s)...", args.mode)
     log.info("-" * 70)
-    ingestion_count = run_ingestion()
+    ingestion_count = run_ingestion(mode=args.mode)
     log.info("Ingestion complete: %d repos fetched and written to raw_repos.", ingestion_count)
 
     # Step 2: Transform

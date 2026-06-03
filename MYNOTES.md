@@ -8,6 +8,34 @@ tags: []
 
 This note will act as a Changelog and a notes repository to understand what my agents are doing, when, and why
 
+## 06-01-2026 - Remote claude attempt at multi language - Failed so far due to hitting rate limits on GitHub
+
+Made a new branch of the pipeline remotely on my phone. It seemed to have all worked, but when I ran the pipeline locally on my computer, it failed due to rate limiting. Pulled it locally to my computer, am able to switch between the main branch and this new branch. I need to figure out rate limiting for pulling from multiple languages.
+
+### Notes for a later prompt on main
+
+```md
+I would like to add the ability to track repos accross time. Right now, every time my DB updates, it gets a fresh pull of the repos, but there is no historical tracking. I
+would like to save data for each run, and then be able to show analysis of trends over time for different repos or differnt cateoriges, or in the future differnet languages.
+How should I implement this?
+
+Some of the things that I want are:
+
+0. additions to the dashboard: I would like to have two options for the buttons in the category breakdown with better names. One button for the bar graph of the categories
+   and add in the percent of the total onto each bar graph. I want the percentage on the bar graph to replace the pie graph, and I need you to delete that too. Then I want to
+   add a new button that is for the line graph that shows the trend of these categories. You can also click into a category to see that catgegory alone over time, or can get a
+   line graph of the top x amount of repos for that catgegory. I would also like to be able to select any number of repos and be able to show the trend line of different
+   metrics for those repos.
+1. any needed changes to the pipeline: i assume chaneges to the database will need to be made for this, as well as possibly changes to the github runner. I don't know, i am
+   just assuming.
+
+Make a plan for completing this
+```
+
+### Other things that I want
+
+1. To say how much time each run of the pipeline took. Now that I have multiple ways to run it, I want to know how long each takes
+
 ## 05-21-2026 - On GitHub, with a GitHub Action, in a Streamlit Cloud hosted Dashboard
 
 ### Steps taken today

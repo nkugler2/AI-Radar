@@ -3,12 +3,12 @@
 This project has two goals:
 
 1. Learn about using multiple claude code agents using Claude-Squad
-2. Build a working application that tracks new AI Python projects on GitHub
+2. Build a working application that tracks new AI projects on GitHub (across multiple languages, e.g. Python, JavaScript/TypeScript, and more)
 
 Ensure that you provide useful insight not just to the goal of completing the project, but also what kinds of coding tasks are ideal to give multiple agents working at the same time in different git worktrees.
 
 ## What this project is
-A data pipeline and dashboard tracking popular AI Python repositories on GitHub.
+A data pipeline and dashboard tracking popular AI repositories on GitHub across multiple languages.
 
 ## Critical rule
 Always read `contracts/schema.py` before writing any code that touches the database.

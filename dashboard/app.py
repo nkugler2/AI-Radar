@@ -95,6 +95,7 @@ def show_repo_detail(repo_row: dict) -> None:
         if homepage:
             st.markdown(f"**Homepage:** {homepage}")
         st.markdown(f"**License:** {repo_row.get('license') or 'N/A'}")
+        st.markdown(f"**Language:** {repo_row.get('language') or 'N/A'}")
         st.markdown(f"**Category:** {repo_row.get('category') or 'N/A'}")
         topics = repo_row.get("topics")
         if topics:
@@ -163,12 +164,34 @@ def show_repo_detail(repo_row: dict) -> None:
 # ---------------------------------------------------------------------------
 st.set_page_config(page_title="AI Radar", page_icon="📡", layout="wide")
 st.title("AI Radar")
-st.caption("Tracking popular AI Python repositories on GitHub")
+st.caption("Tracking popular AI repositories on GitHub across multiple languages")
 
 df = load_repos()
 
 if df.is_empty():
     st.warning("No data yet — run the ingestion and transform pipelines first.")
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# Global language filter (sidebar) — applies to every tab below
+# ---------------------------------------------------------------------------
+if "language" in df.columns:
+    languages = sorted(df["language"].drop_nulls().unique().to_list())
+    if languages:
+        st.sidebar.header("Filters")
+        selected_languages = st.sidebar.multiselect(
+            "Language",
+            options=languages,
+            default=languages,
+            help="Filter every view by the repo's primary GitHub language.",
+        )
+        # Empty selection means "show nothing" rather than "show everything",
+        # which matches how the leaderboard category checkboxes behave.
+        df = df.filter(pl.col("language").is_in(selected_languages))
+        st.sidebar.caption(f"Showing {df.height:,} repos")
+
+if df.is_empty():
+    st.info("No repositories match the selected language filter.")
     st.stop()
 
 # Session state initialization
@@ -232,7 +255,7 @@ with tab_category:
                     selected_cats.append(cat)
 
     cat_cols = [
-        "full_name", "category", "stars", "forks",
+        "full_name", "language", "category", "stars", "forks",
         "momentum_score", "maintenance_score", "days_since_push",
     ]
     cat_cols = [c for c in cat_cols if c in df.columns]
@@ -274,6 +297,7 @@ with tab_category:
             repo_row = df.filter(pl.col("full_name") == repo_name).row(0, named=True)
             with cols[i]:
                 st.markdown(f"#### {repo_row['full_name']}")
+                st.markdown(f"**Language:** {repo_row.get('language') or 'N/A'}")
                 st.markdown(f"**Category:** {repo_row.get('category') or 'N/A'}")
                 st.metric("Stars", f"{repo_row.get('stars', 0):,}")
                 momentum = repo_row.get("momentum_score")
@@ -323,7 +347,7 @@ with tab_leader:
     )
 
     leaderboard_cols = [
-        "full_name", "category", "stars", "forks",
+        "full_name", "language", "category", "stars", "forks",
         "momentum_score", "maintenance_score", "days_since_push",
     ]
     leaderboard_cols = [c for c in leaderboard_cols if c in filtered_df.columns]
@@ -371,7 +395,7 @@ with tab_rising:
     )
 
     rising_cols = [
-        "full_name", "category", "stars",
+        "full_name", "language", "category", "stars",
         "momentum_score", "repo_age_days", "stars_per_day", "days_since_push",
     ]
     rising_cols = [c for c in rising_cols if c in rising_df.columns]
