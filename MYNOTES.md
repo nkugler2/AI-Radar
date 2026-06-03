@@ -8,6 +8,27 @@ tags: []
 
 This note will act as a Changelog and a notes repository to understand what my agents are doing, when, and why
 
+## 06-02-2026 - Multi Language branch committed - fixes need to be made to the daily runner
+
+The branch has been fully merged (committed, pushed, pr created, pr merged). Tried to run the daily GitHub action and it failed due to taking too long. Changing that to 60 minutes and it should be fine.
+
+### Things I want to add
+
+**Add more languages** — add values to the `Language` enum in `contracts/schema.py` (the value must match GitHub's `language:` qualifier; multi-word names are quoted automatically). The ingestion agent reads `DEFAULT_LANGUAGES` dynamically, and the dashboard's language filter is populated from the data, so no transform or dashboard changes are needed.
+
+**Add a second data source** — implement a new ingestion module (e.g. `ingestion/pypi_client.py`) that writes to the same `raw_repos` schema. The transform and dashboard layers are unaffected.
+
+**Add trend tracking** — modify `raw_repos` to store multiple snapshots per repo over time (add a `fetched_at` index). The transform layer can then compute week-over-week star growth.
+
+- [x] Multi-language support (JavaScript/TypeScript, C++, Rust, Go, Jupyter Notebook, C#, Java)
+- [ ] Contributor data ingestion and scoring
+- [ ] Release cadence tracking
+- [ ] Time-series snapshots for trend tracking (check the prompt in 06-01-2026)
+- [ ] PyPI download trend integration
+- [ ] Scheduled ingestion with Prefect
+- [ ] Week-over-week momentum tracking
+- [ ] Alerting for fast-trending repos
+
 ## 06-01-2026 - Remote claude attempt at multi language - Failed so far due to hitting rate limits on GitHub
 
 Made a new branch of the pipeline remotely on my phone. It seemed to have all worked, but when I ran the pipeline locally on my computer, it failed due to rate limiting. Pulled it locally to my computer, am able to switch between the main branch and this new branch. I need to figure out rate limiting for pulling from multiple languages.
