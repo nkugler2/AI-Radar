@@ -32,6 +32,10 @@ Some of the things that I want are:
 Make a plan for completing this
 ```
 
+### Other things that I want
+
+1. To say how much time each run of the pipeline took. Now that I have multiple ways to run it, I want to know how long each takes
+
 ## 05-21-2026 - On GitHub, with a GitHub Action, in a Streamlit Cloud hosted Dashboard
 
 ### Steps taken today
