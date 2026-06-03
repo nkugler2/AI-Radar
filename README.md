@@ -14,8 +14,6 @@ Built originally as a learning project for multi-agent agentic coding using [Cla
 - Categorizes repos by their GitHub topic tags
 - Presents everything in a Streamlit dashboard with a sortable leaderboard, rising stars view, category breakdown, and per-repo detail page
 
-Designed to be extended: adding JavaScript/TypeScript repos, additional data sources like PyPI download trends, or a scheduled pipeline via Prefect requires minimal changes to the existing architecture.
-
 ---
 
 ## Architecture
