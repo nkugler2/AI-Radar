@@ -218,8 +218,12 @@ def compute_metrics(df: pl.DataFrame) -> pl.DataFrame:
 # Write
 # ---------------------------------------------------------------------------
 
-def write_repos(df: pl.DataFrame) -> int:
-    """Overwrite the repos table with the scored DataFrame. Returns row count."""
+def write_repos(df: pl.DataFrame, upsert: bool = False) -> int:
+    """Write scored repos to the repos table. Returns row count.
+
+    upsert=False (default): wipe the table first, then insert (full refresh).
+    upsert=True: INSERT OR REPLACE — leaves rows not in df untouched.
+    """
     con = get_connection()
     try:
         # Ensure the table exists before we do anything else.
@@ -250,10 +254,11 @@ def write_repos(df: pl.DataFrame) -> int:
         # -- can ingnore warning, out is used, just in a sql statement not python code --
         out = df.select([c for c in cols if c in df.columns])
 
-        # makes sure we wipe the table before inserting for a fresh snapshot
-        con.execute(f"DELETE FROM {REPOS_TABLE}")
-        # the actual insertion (duckdb can read directly from polars)
-        con.execute(f"INSERT INTO {REPOS_TABLE} SELECT * FROM out")
+        if not upsert:
+            # Full refresh: wipe first so re-runs produce a clean snapshot.
+            con.execute(f"DELETE FROM {REPOS_TABLE}")
+        # INSERT OR REPLACE handles both modes: replaces on PK conflict, inserts otherwise.
+        con.execute(f"INSERT OR REPLACE INTO {REPOS_TABLE} SELECT * FROM out")
         # runs a count for rows in the table, fetchone()[0] returns just the int count, not a tuple
         count: int = con.execute(f"SELECT COUNT(*) FROM {REPOS_TABLE}").fetchone()[0]
         return count
@@ -265,11 +270,11 @@ def write_repos(df: pl.DataFrame) -> int:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run() -> int:
+def run(upsert: bool = False) -> int:
     """Clean → score → write. Returns the number of repos written."""
     cleaned = clean_run()
     scored = compute_metrics(cleaned)
-    return write_repos(scored)
+    return write_repos(scored, upsert=upsert)
 
 
 if __name__ == "__main__":

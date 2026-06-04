@@ -47,11 +47,30 @@ def main():
     ingestion_count = run_ingestion(mode=args.mode)
     log.info("Ingestion complete: %d repos fetched and written to raw_repos.", ingestion_count)
 
+    # Step 2: For rising_only, seed repos table from the existing Parquet so
+    # the 100 new repos are merged in rather than replacing everything.
+    upsert_transform = False
+    if args.mode == "rising_only" and Path(PARQUET_PATH).exists():
+        log.info("")
+        log.info("STEP 1.5: Seeding repos table from existing Parquet...")
+        log.info("-" * 70)
+        con = duckdb.connect(DB_PATH)
+        try:
+            con.execute(
+                f"INSERT OR REPLACE INTO {REPOS_TABLE} "
+                f"SELECT * FROM read_parquet('{PARQUET_PATH}')"
+            )
+            seeded = con.execute(f"SELECT COUNT(*) FROM {REPOS_TABLE}").fetchone()[0]
+            log.info("Seeded %d existing repos from Parquet.", seeded)
+        finally:
+            con.close()
+        upsert_transform = True
+
     # Step 2: Transform
     log.info("")
     log.info("STEP 2: Running transform...")
     log.info("-" * 70)
-    transform_count = run_transform()
+    transform_count = run_transform(upsert=upsert_transform)
     log.info("Transform complete: %d repos cleaned, scored, and written to repos.", transform_count)
 
     # Step 3: Export repos table to Parquet for Streamlit Cloud
