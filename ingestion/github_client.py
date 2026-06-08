@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 import requests
@@ -27,6 +28,7 @@ from contracts.schema import (
     DEFAULT_REPO_LIMIT,
     Language,
     RATE_LIMIT_THRESHOLD,
+    README_FETCH_WORKERS,
     SEARCH_API_DELAY,
     SearchTopic,
     language_query_value,
@@ -278,11 +280,27 @@ def fetch_readme(full_name: str) -> str:
 
 
 def fetch_readmes(repos: list[dict]) -> list[dict]:
-    """Inject readme_content into each repo dict by calling the GitHub API."""
+    """Inject readme_content into each repo dict by calling the GitHub API.
+
+    Runs README_FETCH_WORKERS requests concurrently. Each worker still respects
+    the per-call API_CALL_DELAY inside _request_with_retry, so throughput is
+    roughly (workers / API_CALL_DELAY) req/s — well under the core rate limit.
+    """
     total = len(repos)
-    for i, repo in enumerate(repos, start=1):
-        print(f"Fetching READMEs: {i}/{total}", flush=True)
-        repo["readme_content"] = fetch_readme(repo["full_name"])
+    if total == 0:
+        return repos
+
+    with ThreadPoolExecutor(max_workers=README_FETCH_WORKERS) as executor:
+        future_to_repo = {
+            executor.submit(fetch_readme, repo["full_name"]): repo
+            for repo in repos
+        }
+        for i, future in enumerate(as_completed(future_to_repo), start=1):
+            repo = future_to_repo[future]
+            repo["readme_content"] = future.result()
+            if i % 100 == 0 or i == total:
+                log.info("Fetched READMEs: %d/%d", i, total)
+
     return repos
 
 

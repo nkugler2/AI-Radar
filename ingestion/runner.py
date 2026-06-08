@@ -22,6 +22,7 @@ from contracts.schema import (
     RAW_REPOS_TABLE,
     RAW_REPOS_COLUMNS,
     RAW_REPOS_SCHEMA,
+    README_CACHE_TTL_HOURS,
     RECENT_RISING_LANGUAGES,
     SearchTopic,
     init_db,
@@ -53,16 +54,24 @@ def _row_tuple(repo: dict) -> tuple:
 
 
 def _load_cached_readmes(con, repo_ids: list[int]) -> dict[int, str]:
-    """Return {repo_id: readme_content} for repos fetched within the last 24 hours."""
+    """Return {repo_id: readme_content} for repos whose cached README is still fresh.
+
+    Freshness window comes from README_CACHE_TTL_HOURS (contracts/schema.py).
+    Must be > 168 (7 days) for the weekly deep pass to benefit from the cache —
+    otherwise every Sunday's run re-fetches every README from scratch.
+    """
     if not repo_ids:
         return {}
-    rows = con.execute("""
+    rows = con.execute(
+        f"""
         SELECT id, readme_content
         FROM raw_repos
         WHERE id = ANY(?)
           AND readme_content IS NOT NULL
-          AND fetched_at >= NOW() - INTERVAL '24 hours'
-    """, [repo_ids]).fetchall()
+          AND fetched_at >= NOW() - INTERVAL '{README_CACHE_TTL_HOURS} hours'
+        """,
+        [repo_ids],
+    ).fetchall()
     return {row[0]: row[1] for row in rows}
 
 

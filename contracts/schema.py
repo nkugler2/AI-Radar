@@ -130,6 +130,18 @@ API_MAX_RETRIES = 3
 # Prevents reactive 403/429 round-trips and secondary "abuse" trips.
 RATE_LIMIT_THRESHOLD = 3
 
+# How long a cached README stays fresh before we re-fetch it. The weekly deep
+# pass runs every 7 days, so anything shorter than that guarantees a full
+# re-fetch every Sunday. READMEs change rarely, so a 14-day window keeps
+# content current while letting the weekly run skip ~all README API calls.
+README_CACHE_TTL_HOURS = 24 * 14
+
+# Number of worker threads used to fetch READMEs in parallel. The 0.75s
+# per-call delay still applies inside each worker, so effective throughput
+# is ~workers / API_CALL_DELAY requests per second. 5 workers ≈ 6.7 req/s,
+# well under the 5000/hr (~83/s) core API limit with headroom for retries.
+README_FETCH_WORKERS = 5
+
 # Languages searched in the recent-rising pass. Kept as a separate constant
 # (rather than just reusing DEFAULT_LANGUAGES) so it can be scoped down again
 # if Search-API budget becomes tight — e.g. set to [PYTHON, JAVASCRIPT,
