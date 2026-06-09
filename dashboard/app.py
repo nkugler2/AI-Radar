@@ -388,6 +388,14 @@ with tab_rising:
         step=7,
     )
 
+    top_n = st.slider(
+        "Number of repos to show",
+        min_value=5,
+        max_value=100,
+        value=20,
+        step=5,
+    )
+
     rising_df = (
         df.filter(pl.col("repo_age_days") <= age_limit)
         if "repo_age_days" in df.columns
@@ -404,7 +412,7 @@ with tab_rising:
         rising_df
         .select(rising_cols)
         .sort("momentum_score", descending=True, nulls_last=True)
-        .head(20)
+        .head(top_n)
     )
 
     rising_event = st.dataframe(
@@ -429,7 +437,7 @@ with tab_rising:
             rising_df
             .filter(pl.col("momentum_score").is_not_null())
             .sort("momentum_score", descending=True)
-            .head(50)
+            .head(top_n)
         )
         if not scatter_df.is_empty():
             fig_scatter = px.scatter(
@@ -438,7 +446,7 @@ with tab_rising:
                 y="momentum_score",
                 hover_name="full_name",
                 color="category",
-                title="Stars vs Momentum (top 50)",
+                title=f"Stars vs Momentum (top {top_n})",
                 size="stars_per_day" if "stars_per_day" in scatter_df.columns else None,
             )
             st.plotly_chart(fig_scatter, width="stretch")
