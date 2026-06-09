@@ -28,6 +28,7 @@ from contracts.schema import (
     init_db,
     get_connection,
 )
+from contracts.scrub import scan_readme
 from ingestion.github_client import fetch_all_topics, fetch_readmes, search_repos, parse_repo
 
 # basicConfig sets up logging for the entire program:
@@ -51,6 +52,47 @@ INSERT_SQL = f"""
 
 def _row_tuple(repo: dict) -> tuple:
     return tuple(repo.get(col) for col in RAW_REPOS_COLUMNS)
+
+
+def _log_secret_findings(repos: list[dict]) -> None:
+    """Scan all repo READMEs for secrets and log a report.
+
+    This does NOT redact — redaction happens in the transform layer before
+    the parquet is written. The purpose here is visibility: you see which
+    repos have secrets in the ingestion log, so problems are surfaced early
+    regardless of whether you run a full pipeline or just ingestion.
+    """
+    all_findings: list[dict] = []
+    for repo in repos:
+        readme = repo.get("readme_content") or ""
+        findings = scan_readme(readme)
+        for f in findings:
+            all_findings.append({"full_name": repo.get("full_name", "unknown"), **f})
+
+    if not all_findings:
+        log.info("SECRET SCAN: No secrets detected in any README.")
+        return
+
+    affected = len({f["full_name"] for f in all_findings})
+    log.warning("=" * 70)
+    log.warning(
+        "SECRET SCAN: %d pattern(s) found across %d repo(s)",
+        len(all_findings),
+        affected,
+    )
+    log.warning("  (These will be redacted by the transform step before writing to parquet)")
+    log.warning("-" * 70)
+    for f in all_findings:
+        note = "(likely placeholder)" if f["is_likely_placeholder"] else "*** REVIEW NEEDED ***"
+        log.warning(
+            "  %-50s | %-20s | severity=%-8s | %s | sample: %s",
+            f["full_name"],
+            f["pattern_name"],
+            f["severity"],
+            note,
+            f["sample"],
+        )
+    log.warning("=" * 70)
 
 
 def _load_cached_readmes(con, repo_ids: list[int]) -> dict[int, str]:
@@ -200,6 +242,10 @@ def run_ingestion(
         uncached = fetch_readmes(uncached)
         fetched_map = {r["id"]: r for r in uncached}
         repos = [fetched_map.get(r["id"], r) for r in repos]
+
+    # Scan READMEs for secrets and surface them in the log before writing
+    log.info("Scanning READMEs for secrets...")
+    _log_secret_findings(repos)
 
     # log the writing of data into duckdb
     log.info("Writing %d repos to %s...", len(repos), RAW_REPOS_TABLE)

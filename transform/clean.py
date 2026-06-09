@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+
 import polars as pl
 
 from contracts.schema import (
     RAW_REPOS_TABLE,
     get_connection,
 )
+from contracts.scrub import scrub_readme
+
+log = logging.getLogger(__name__)
 
 # connect to the DB, select the data, and put it into a polars Dataframe
 def read_raw_repos() -> pl.DataFrame:
@@ -17,6 +22,39 @@ def read_raw_repos() -> pl.DataFrame:
         return con.execute(f"SELECT * FROM {RAW_REPOS_TABLE}").pl()
     finally:
         con.close()
+
+def _scrub_secrets(df: pl.DataFrame) -> pl.DataFrame:
+    """Scan readme_content for secrets, log findings, replace matches with redaction markers."""
+    all_findings: list[dict] = []
+    scrubbed_readmes: list[str] = []
+
+    for row in df.iter_rows(named=True):
+        readme = row.get("readme_content") or ""
+        scrubbed, findings = scrub_readme(readme)
+        scrubbed_readmes.append(scrubbed)
+        for f in findings:
+            all_findings.append({"full_name": row["full_name"], **f})
+
+    if all_findings:
+        affected_repos = len({f["full_name"] for f in all_findings})
+        log.warning(
+            "SECRET SCAN: %d pattern(s) found across %d repo(s) — redacted before writing",
+            len(all_findings),
+            affected_repos,
+        )
+        for f in all_findings:
+            note = " (likely placeholder)" if f["is_likely_placeholder"] else " *** REVIEW NEEDED ***"
+            log.warning(
+                "  %-50s | %-20s | severity=%-8s | sample: %s%s",
+                f["full_name"],
+                f["pattern_name"],
+                f["severity"],
+                f["sample"],
+                note,
+            )
+
+    return df.with_columns(pl.Series("readme_content", scrubbed_readmes))
+
 
 # data cleaning
 def clean(df: pl.DataFrame) -> pl.DataFrame:
@@ -53,6 +91,9 @@ def clean(df: pl.DataFrame) -> pl.DataFrame:
         pl.col("description").fill_null(""),
         pl.col("readme_content").fill_null(""),
     )
+
+    # Scrub secrets from README content before it reaches the parquet / repos table
+    df = _scrub_secrets(df)
 
     # Ensure topics is an empty list when null
     df = df.with_columns(
