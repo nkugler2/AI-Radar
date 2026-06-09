@@ -22,7 +22,8 @@ The project is split into three layers with a shared contract that each layer co
 
 ```
 ├── contracts/
-│   └── schema.py          # Single source of truth — table names, field types, DB path
+│   ├── schema.py          # Single source of truth — table names, field types, DB path
+│   └── scrub.py           # Secret detection and redaction patterns (shared by all layers)
 ├── ingestion/
 │   ├── github_client.py   # GitHub API client, search, and repo metadata fetching
 │   └── runner.py          # Orchestrates ingestion and writes to DuckDB
@@ -35,6 +36,24 @@ The project is split into three layers with a shared contract that each layer co
 │   └── ai_radar.duckdb    # Local DuckDB file (gitignored)
 └── main.py                # Pipeline runner: ingestion → transform → launch instructions
 ```
+
+### Secret scrubbing
+
+Some third-party READMEs contain credential-shaped strings (real or example). Before any data reaches the parquet file that gets committed to git, `contracts/scrub.py` scans and redacts them.
+
+- **Ingestion** (`runner.py`) — after READMEs are fetched, scans each one and prints a WARNING log block listing every repo, what pattern was hit, the severity, and a sample. This is read-only: `raw_repos` in DuckDB is left unchanged.
+- **Transform** (`clean.py`) — during cleaning, replaces every match with `[AI-Radar: {pattern_name} redacted]` before writing to the `repos` table and exporting to parquet.
+
+**To add a new secret type**, add one entry to `SECRET_PATTERNS` in `contracts/scrub.py`:
+
+```python
+"my_new_key": {
+    "pattern": r"my-regex-here",
+    "severity": "high",   # critical / high / medium / low
+},
+```
+
+That's it — both the ingestion log and the transform scrub pick it up automatically.
 
 ### The shared contract
 
