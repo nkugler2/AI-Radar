@@ -8,6 +8,44 @@ tags: []
 
 This note will act as a Changelog and a notes repository to understand what my agents are doing, when, and why
 
+## 06-09-2026 - Secret scrubbing + Rising Stars dashboard fix
+
+### Steps taken today
+
+1. Added a secret-scrubbing layer (`contracts/scrub.py`) with 8 regex patterns covering the most common leaked credential types: GitHub tokens, AWS access keys, OpenAI/Anthropic API keys, PEM private key headers, Slack tokens, Stripe live keys, and Google API keys
+2. Ingestion now logs a WARNING block after each README fetch showing which repos had matches, what pattern fired, and a redacted sample — so you can audit what would have been scrubbed without touching the data
+3. Transform (`clean.py`) applies the actual scrub before writing to the `repos` table and parquet — replacements use the format `[AI-Radar: {pattern_name} redacted]`. Raw DuckDB data is intentionally left untouched (it's local-only and not published)
+4. Fixed a silent inconsistency in the Rising Stars tab: the dataframe showed the top 20 repos by momentum but the chart showed the top 50, so repos that appeared in the visualization were missing from the table. Replaced both hardcoded limits with a single slider (default 20, range 5–100) so the two views are always in sync
+
+### Why this matters
+
+README files from GitHub repos can contain real secrets that their authors accidentally committed. Since this project fetches and publishes those READMEs to a public parquet file, scrubbing before export is a necessary safety measure.
+
+## 06-08-2026 - Parallelization fix for the weekly deep run
+
+### Steps taken today
+
+1. The weekly deep GitHub Action was consistently timing out at the 1-hour mark because fetching READMEs for hundreds of repos sequentially was too slow. Fixed by adding parallelization to the ingestion layer and adding a TTL-based cache so READMEs already fetched recently are not re-downloaded
+2. Added `README_CACHE_TTL_HOURS` constant to `contracts/schema.py` to control the cache window
+3. The GitHub Action for the deep search still hit the GitHub rate limit and failed on this run specifically. Ran the deep and rising-star modes locally instead — the README cache meant most files were already on disk, so the local run completed quickly and the parquet file was repopulated manually
+
+## 06-04-2026 - Bug: daily run was wiping all repos from the parquet file
+
+### Steps taken today
+
+1. Discovered that the daily rising-stars run was overwriting the entire `repos` table with only the ~150 repos it fetched — deleting all the repos from the deeper weekly run
+2. The bug was in `transform/metrics.py` (full table overwrite on every run) and `main.py` (no distinction between run modes when writing output)
+3. Fixed both files so a `rising` mode run merges results into the existing table rather than replacing it
+4. Had to manually trigger the weekly runner again after this fix to repopulate the data that was lost
+
+## 06-03-2026 - Timeout fix, CLAUDE.md overhaul
+
+### Steps taken today
+
+1. Fixed the `daily-rising` GitHub Action timeout: it was set to 15 minutes, which was too short for the run. Increased to 60 minutes
+2. Cleaned up `CLAUDE.md` — removed the multi-agent workflow instructions that were left over from the original project setup and replaced with guidance that leans the model toward teaching and explaining decisions as it helps build the project
+3. Updated README to more accurately reflect the actual development process (iterating with AI agents) rather than describing it as a purely manual build
+
 ## 06-02-2026 - Multi Language branch committed - fixes need to be made to the daily runner
 
 The branch has been fully merged (committed, pushed, pr created, pr merged). Tried to run the daily GitHub action and it failed due to taking too long. Changing that to 60 minutes and it should be fine.
@@ -56,6 +94,18 @@ Make a plan for completing this
 ### Other things that I want
 
 1. To say how much time each run of the pipeline took. Now that I have multiple ways to run it, I want to know how long each takes
+
+## 05-30-2026 - Changed ingestion to surface newer repos
+
+### Steps taken today
+
+1. Noticed that the Rising Stars view was never showing repos younger than ~60 days. The root cause: ingestion only fetched the top 150 repos by stars, and no recently-created project ever ranks that high
+2. Added a second ingestion pass in `runner.py` (`_fetch_recent_rising`) that specifically queries GitHub for repos created in the past 90 days, sorted by stars ascending — this surfaces new projects that are growing fast but haven't yet accumulated the total stars to appear in the main search
+3. `github_client.py` got a small update to support the additional query parameters
+
+### Why this matters
+
+The whole point of Rising Stars is to find new, fast-growing projects before they become obvious. If ingestion only ever pulls the top repos by total stars, that view just becomes a second leaderboard. This change is what makes the Rising Stars tab actually useful.
 
 ## 05-21-2026 - On GitHub, with a GitHub Action, in a Streamlit Cloud hosted Dashboard
 
@@ -138,6 +188,23 @@ There are a couple of things that I need to test:
 1. Test that the pipeline works, and that it completes even after the changes I made to implement readme.md files being downloaded.
 2. test how the dashboard looks and functions with the readme changes and other dashboard changes
 
+## 05-12-2026 - Major dashboard overhaul
+
+### Steps taken today
+
+1. Used the requirements I wrote in the 05-08 notes as a prompt and applied a large set of changes to `dashboard/app.py` (~150 lines changed)
+2. Category Breakdown: bar chart is now clickable to filter repos, multi-select is supported, filtered repos appear in a dataframe below the chart, and you can select multiple repos from that dataframe to compare them side by side
+3. Leaderboard: replaced the sidebar category dropdown with a checkbox grid (select all / clear all buttons) — much easier to use when filtering by multiple categories
+4. Rising Stars: added the age slider so you can look back N days and only see repos created within that window, which ensures the view actually surfaces new projects rather than duplicating the leaderboard
+5. Repo Detail: kept as a searchable tab, but detail is now surfaced inline from any tab rather than requiring a separate navigation step
+
+## 05-11-2026 - First manual revision to the dashboard
+
+### Steps taken today
+
+1. Made the first pass of manual edits to `dashboard/app.py` after seeing the initial agent output running in the browser
+2. Updated MYNOTES and README to capture the state of the project at this point
+
 ## 05-08-2026 - Changes to the dashboard
 
 ### Steps taken today
@@ -165,6 +232,19 @@ I should put all of this back into ai and get some feedback on what my goals are
 
 0. Commited MYNOTES and MYREADME changes (minor)
 1. Changed the running of the pipeline to only use main.py - `uv run python main.py`
+
+## 04-01-2026 - Merged all three worktree branches into master
+
+### Steps taken today
+
+1. Merged all three feature branches into master: `feature/ingestion-start`, `feature/transform`, `feature/dashboard-start`
+2. Ran the full pipeline for the first time end-to-end: ingestion → transform → dashboard
+3. Fixed a type error in the transform script that only surfaced after merging (types between the clean and metrics steps were mismatched)
+4. Fixed a Streamlit deprecation warning in `dashboard/app.py`: replaced `use_container_width=True` with `width='stretch'`. Useful to know: `width='content'` is the equivalent of `use_container_width=False` if you ever need it
+
+### Lesson learned
+
+When running agent-generated code from separate worktrees together for the first time, expect type mismatches at the seams — each agent writes to contract types independently, but small assumptions can differ (e.g. what a nullable column looks like coming out of a Polars query). The fix is usually small, but you have to actually run the pipeline to find it.
 
 ## 03-30-2026 - Inital commit and merge of changes
 
