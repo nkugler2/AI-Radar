@@ -1,12 +1,13 @@
 ---
-id: MYNOTES
-aliases: []
-tags: []
+id: DEVLOG
+aliases: [MYNOTES]
+tags: [devlog, ai-radar]
 ---
 
-# My Changelog/Notes -> Claude Squad AI attempt
+# Devlog — AI Radar
 
-This note will act as a Changelog and a notes repository to understand what my agents are doing, when, and why
+Day-by-day journal of what changed, why, and what's next. Newest entry on top.
+Git is the per-commit log of the code; this is the per-day log of the thinking.
 
 ## 06-09-2026 - Secret scrubbing + Rising Stars dashboard fix
 
