@@ -7,12 +7,14 @@ This is the main logic file that deterines scoring and metrics for all of the pr
 from __future__ import annotations
 
 import datetime
+import math
 
 import polars as pl
 
 from contracts.schema import (
     AICategory,
     MAINTENANCE_WEIGHTS,
+    MOMENTUM_NORM,
     MOMENTUM_WEIGHTS,
     RAW_CONTRIBUTORS_TABLE,
     RAW_RELEASES_TABLE,
@@ -157,13 +159,34 @@ def compute_metrics(df: pl.DataFrame) -> pl.DataFrame:
     )
 
     # --- Momentum score ------------------------------------------------------
-    # Each component is normalised to roughly [0, 1] before weighting.
-    # Orders each repo by stars per day (with no ties, ex/ two repos with 1,000)
-    spd_norm = pl.col("stars_per_day").rank("ordinal") / pl.col("stars_per_day").count()
+    # Each component is normalised to [0, 1] before weighting using ABSOLUTE caps
+    # (contracts/schema.py: MOMENTUM_NORM), not rank().
+    #
+    # Why absolute, not rank? rank() is cohort-dependent — a repo's score changes
+    # run-to-run depending on what else was ingested, so snapshotting it produces
+    # noise instead of a trend. With caps, a repo's score depends only on its own
+    # inputs, so the same raw inputs always yield the same score (Phase 1 goal).
+    #
+    # Why log10 for stars_per_day and open_issues? Both signals are heavy-tailed:
+    # a viral repo can have 1000× the star-velocity of an obscure one. Dividing the
+    # raw value by the cap linearly would push ~99% of repos to near 0 and only the
+    # few giants near 1. Taking log10 first compresses that tail so ordinary repos
+    # land across the [0, 1] range and the score discriminates among them. We divide
+    # by log10(cap + 1) (a constant) so that a repo sitting at the cap scores ~1.0,
+    # and clip the upper bound so anything above the cap saturates at 1.0.
+    spd_norm = (
+        ((pl.col("stars_per_day") + 1.0).log10() / math.log10(MOMENTUM_NORM["stars_per_day_cap"] + 1.0))
+        .clip(upper_bound=1.0)
+    )
     # normalize recent push bonus over one year (365 days), capped at 1.0. Assumes repo age ≥ 1 day.
     push_bonus = 1.0 - pl.col("days_since_push").cast(pl.Float64).clip(0, 365) / 365.0
-    fr_norm = pl.col("fork_to_star_ratio").rank("ordinal") / pl.col("fork_to_star_ratio").count()
-    ia_norm = pl.col("open_issues").cast(pl.Float64).rank("ordinal") / pl.col("open_issues").count()
+    # Linear ratio against the cap: forks/stars at or above the cap → 1.0. Not log-scaled
+    # because the ratio is already bounded in a narrow [0, ~1] range, not heavy-tailed.
+    fr_norm = (pl.col("fork_to_star_ratio") / MOMENTUM_NORM["fork_ratio_cap"]).clip(upper_bound=1.0)
+    ia_norm = (
+        ((pl.col("open_issues").cast(pl.Float64) + 1.0).log10() / math.log10(MOMENTUM_NORM["open_issues_cap"] + 1.0))
+        .clip(upper_bound=1.0)
+    )
 
     df = df.with_columns(
         (

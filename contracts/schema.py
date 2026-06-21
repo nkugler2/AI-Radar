@@ -215,6 +215,23 @@ MOMENTUM_WEIGHTS = {
     "issue_activity": 0.15,      # open_issues as activity proxy
 }
 
+# Caps used to normalize raw signals into [0, 1] WITHOUT ranking.
+# Why caps instead of rank()? A rank-based score is cohort-dependent: the same
+# repo gets a different number every run depending on what else was ingested,
+# which makes day-to-day snapshots noise instead of signal. Absolute caps make
+# the score reproducible run-to-run from a repo's own inputs alone.
+#
+# Tune these by spot-checking the top-20 — values here are calibrated so the
+# established giants land near 1.0 on each component. stars_per_day and
+# open_issues are log10-scaled before being divided by the (log of the) cap
+# because both signals are heavy-tailed (AutoGPT vs an obscure repo can differ
+# by 1000×); linear normalization would crush 99% of repos to ~0.
+MOMENTUM_NORM = {
+    "stars_per_day_cap": 100.0,    # log10-scaled; 100 sp/d → ~1.0
+    "fork_ratio_cap": 0.5,         # forks/stars ≥ 0.5 → 1.0
+    "open_issues_cap": 1000,       # log10-scaled
+}
+
 # Maintenance score = signals of active upkeep
 MAINTENANCE_WEIGHTS = {
     "days_since_push": 0.50,     # lower is better
