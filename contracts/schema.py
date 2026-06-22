@@ -34,6 +34,8 @@ SCHEMA_VERSION = "0.1.0"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = str(PROJECT_ROOT / "data" / "ai_radar.duckdb")
 PARQUET_PATH = str(PROJECT_ROOT / "data" / "repos.parquet")
+# Daily snapshots exported for Streamlit Cloud (which reads parquet, not DuckDB).
+SNAPSHOTS_PARQUET_PATH = str(PROJECT_ROOT / "data" / "snapshots.parquet")
 
 
 # ---------------------------------------------------------------------------

@@ -20,6 +20,8 @@ from contracts.schema import (
     RAW_RELEASES_TABLE,
     REPOS_SCHEMA,
     REPOS_TABLE,
+    SNAPSHOTS_SCHEMA,
+    SNAPSHOTS_TABLE,
     TOPIC_TO_CATEGORY,
     get_connection,
 )
@@ -290,16 +292,78 @@ def write_repos(df: pl.DataFrame, upsert: bool = False) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Snapshot write
+# ---------------------------------------------------------------------------
+
+def write_snapshot(df: pl.DataFrame) -> int:
+    """Write today's row to repo_snapshots for every repo in *df*.
+
+    Captures a point-in-time copy of each repo's headline metrics keyed on
+    (repo_id, snapshot_date) so the dashboard can chart change over time.
+
+    Idempotent: the table's primary key is (repo_id, snapshot_date), so an
+    INSERT OR REPLACE means re-running on the same UTC day overwrites that
+    day's row rather than appending a duplicate (last write wins).
+
+    Returns the number of snapshot rows persisted for today.
+    """
+    # Use the UTC *date* (not datetime) so every repo in a run shares one
+    # snapshot_date and same-day reruns collide on the primary key. Same UTC
+    # basis compute_metrics already uses for its time-based columns.
+    today = datetime.datetime.now(datetime.UTC).date()
+
+    # Column order MUST match SNAPSHOTS_SCHEMA so the positional INSERT ... SELECT *
+    # below lines up. Note the cleaned/scored df calls the repo id `id`, while the
+    # snapshot table calls it `repo_id`.
+    snap = df.select(
+        pl.col("id").alias("repo_id"),
+        pl.lit(today).alias("snapshot_date"),
+        pl.col("stars"),
+        pl.col("forks"),
+        pl.col("open_issues"),
+        pl.col("momentum_score"),
+        pl.col("maintenance_score"),
+    )
+
+    con = get_connection()
+    try:
+        # Ensure the table exists before we touch it (mirrors write_repos).
+        con.execute(SNAPSHOTS_SCHEMA)
+        # INSERT OR REPLACE upserts on (repo_id, snapshot_date): same-day reruns
+        # replace, new days insert. `snap` is referenced via DuckDB's replacement
+        # scan over the local Polars variable (same trick as write_repos' `out`).
+        con.execute(f"INSERT OR REPLACE INTO {SNAPSHOTS_TABLE} SELECT * FROM snap")
+        # Count only today's rows — that's the meaningful "snapshots written"
+        # number, and it confirms idempotency (it equals the repo count, not 2×).
+        count: int = con.execute(
+            f"SELECT COUNT(*) FROM {SNAPSHOTS_TABLE} WHERE snapshot_date = ?",
+            [today],
+        ).fetchone()[0]
+        return count
+    finally:
+        con.close()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run(upsert: bool = False) -> int:
-    """Clean → score → write. Returns the number of repos written."""
+def run(upsert: bool = False) -> tuple[int, int]:
+    """Clean → score → write repos + daily snapshot.
+
+    Returns (repo_count, snapshot_count): repos written to the repos table and
+    snapshot rows written for today, respectively.
+    """
     cleaned = clean_run()
     scored = compute_metrics(cleaned)
-    return write_repos(scored, upsert=upsert)
+    repo_count = write_repos(scored, upsert=upsert)
+    snapshot_count = write_snapshot(scored)
+    return repo_count, snapshot_count
 
 
 if __name__ == "__main__":
-    n = run()
-    print(f"Transform complete: {n} repos written to '{REPOS_TABLE}'.")
+    repos_written, snapshots_written = run()
+    print(
+        f"Transform complete: {repos_written} repos written to '{REPOS_TABLE}', "
+        f"{snapshots_written} snapshots written to '{SNAPSHOTS_TABLE}'."
+    )

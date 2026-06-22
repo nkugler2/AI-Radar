@@ -13,7 +13,13 @@ from pathlib import Path
 
 import duckdb
 
-from contracts.schema import DB_PATH, PARQUET_PATH, REPOS_TABLE
+from contracts.schema import (
+    DB_PATH,
+    PARQUET_PATH,
+    REPOS_TABLE,
+    SNAPSHOTS_PARQUET_PATH,
+    SNAPSHOTS_TABLE,
+)
 from ingestion.runner import run_ingestion
 from transform.metrics import run as run_transform
 
@@ -70,12 +76,13 @@ def main():
     log.info("")
     log.info("STEP 2: Running transform...")
     log.info("-" * 70)
-    transform_count = run_transform(upsert=upsert_transform)
+    transform_count, snapshot_count = run_transform(upsert=upsert_transform)
     log.info("Transform complete: %d repos cleaned, scored, and written to repos.", transform_count)
+    log.info("Snapshots written: %d rows for today in repo_snapshots.", snapshot_count)
 
     # Step 3: Export repos table to Parquet for Streamlit Cloud
     log.info("")
-    log.info("STEP 3: Exporting repos table to Parquet...")
+    log.info("STEP 3: Exporting tables to Parquet...")
     log.info("-" * 70)
     Path(PARQUET_PATH).parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(DB_PATH, read_only=True)
@@ -83,6 +90,12 @@ def main():
         con.execute(f"COPY {REPOS_TABLE} TO '{PARQUET_PATH}' (FORMAT PARQUET)")
         parquet_size = Path(PARQUET_PATH).stat().st_size / 1024
         log.info("Exported repos to %s (%.1f KB)", PARQUET_PATH, parquet_size)
+
+        # Snapshots power the dashboard's trend charts. Streamlit Cloud reads
+        # parquet (it has no DuckDB file), so export them alongside repos.
+        con.execute(f"COPY {SNAPSHOTS_TABLE} TO '{SNAPSHOTS_PARQUET_PATH}' (FORMAT PARQUET)")
+        snapshots_size = Path(SNAPSHOTS_PARQUET_PATH).stat().st_size / 1024
+        log.info("Exported snapshots to %s (%.1f KB)", SNAPSHOTS_PARQUET_PATH, snapshots_size)
     finally:
         con.close()
 
