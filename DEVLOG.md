@@ -9,6 +9,40 @@ tags: [devlog, ai-radar]
 Day-by-day journal of what changed, why, and what's next. Newest entry on top.
 Git is the per-commit log of the code; this is the per-day log of the thinking.
 
+## 06-22-2026 - Phases 1 & 2: absolute momentum scoring + daily snapshots
+
+### Phase 1 — make momentum scoring absolute (committed 06-21, logged here)
+
+1. `transform/metrics.py`: replaced the three rank-based momentum components (`rank("ordinal") / count()` for stars/day, fork ratio, and issue activity) with absolute, cap-based normalization. `stars_per_day` and `open_issues` are log10-scaled then divided by `log10(cap + 1)`; fork ratio is a linear ratio against its cap. All three clip to a max of 1.0. Added `import math`
+2. `contracts/schema.py`: added the `MOMENTUM_NORM` caps (`stars_per_day_cap=100`, `fork_ratio_cap=0.5`, `open_issues_cap=1000`) as the single tuning knob, with a comment explaining why caps beat `rank()`
+3. **Why it mattered:** `rank()` is cohort-dependent — the same repo got a different momentum_score every run depending on what else was ingested, so any snapshot of it would be noise. Caps make the score depend only on a repo's own inputs, so identical raw inputs yield an identical score run-to-run. This is the prerequisite that makes Phase 2's snapshots meaningful (log10 because star-velocity is heavy-tailed: linear normalization would crush ~99% of repos to near 0)
+
+### Phase 2 — daily snapshots into repo_snapshots
+
+### Steps taken today
+
+1. Added `write_snapshot(df)` to `transform/metrics.py` — takes the scored DataFrame, selects `id`/`stars`/`forks`/`open_issues`/`momentum_score`/`maintenance_score`, stamps a UTC `snapshot_date` (date, not datetime), and does `INSERT OR REPLACE INTO repo_snapshots`. The table's PK is `(repo_id, snapshot_date)`, so a same-day rerun overwrites that day's row instead of duplicating it
+2. `run()` now writes repos **and** a snapshot, returning `(repo_count, snapshot_count)`; updated `__main__` and the imports accordingly
+3. `main.py` unpacks the new tuple, logs the snapshot count on its own line, and Step 3 now also `COPY`s `repo_snapshots` to `data/snapshots.parquet` (so Streamlit Cloud can read it)
+4. Added `SNAPSHOTS_PARQUET_PATH` to `contracts/schema.py` next to the other path constants
+5. Verified locally against the existing `raw_repos` (7,864 rows, no API re-ingestion): one run wrote 7,864 snapshot rows; a second same-day run kept the total at 7,864 (idempotent, only `2026-06-21`); `snapshots.parquet` exported (151 KB) and reads back with the right columns
+
+### Decisions
+
+- `write_snapshot(scored)` snapshots whatever the transform scored that run. In `deep_only`/`full` that's all repos; in `rising_only` it's only the freshly-ingested rising repos (the parquet-seeded repos aren't re-scored). So daily runs snapshot rising repos and the weekly deep run snapshots everything — fine for v1, but trend lines will be denser for rising repos. Followed the plan's `write_snapshot(scored)` rather than re-reading the full repos table
+- Snapshot count returned is *today's* row count (not the table total), so the log line stays meaningful as history accumulates and doubles as an idempotency check
+- `.gitignore` already does the right thing: only `data/*.duckdb` is ignored, so both parquets are committed — no change needed
+
+### What to test
+
+- End-to-end through the API (needs `.env`): `uv run python main.py --mode deep_only` → expect new `Snapshots written: N rows...` and `Exported snapshots to ...` log lines
+- Final acceptance: after the next scheduled `daily-rising` GitHub Action, confirm it commits a `snapshots.parquet` update
+
+### Next steps
+
+- Commit (include the new `data/snapshots.parquet`), push, and watch the next daily-rising Action commit a snapshots update
+- Then start **Phase 3 — Dashboard rebuild for trends + 06-01 cleanup** (trend tabs, kill the pie chart, % labels, slider→dropdown). Trend lines stay flat until a few days of snapshots accumulate
+
 ## 06-09-2026 - Secret scrubbing + Rising Stars dashboard fix
 
 ### Steps taken today

@@ -8,6 +8,8 @@ tags: []
 
 Written 2026-06-04. Covers the next 5 phases of work. Each phase is independently shippable: you can stop after any phase and the project still works end-to-end.
 
+> **Progress:** Phase 1 ✅ (2026-06-21, commit `7168620`) · Phase 2 ✅ (2026-06-22, commit `c096f65`). **Phase 3 is next.**
+
 ## Why this order
 
 1. **Momentum must be absolute before snapshots are meaningful.** Today's score is rank-normalized — the same repo gets a different score every run depending on the cohort. Snapshotting that produces noise, not signal. Fix the formula first.
@@ -18,7 +20,9 @@ Written 2026-06-04. Covers the next 5 phases of work. Each phase is independentl
 
 ---
 
-## Phase 1 — Make momentum scoring absolute
+## Phase 1 — Make momentum scoring absolute  ✅ COMPLETE
+
+**Status:** ✅ Complete — 2026-06-21 (commit `7168620`). Rank-based components replaced with absolute, cap-based normalization (`MOMENTUM_NORM` in `contracts/schema.py`); same raw inputs now yield the same `momentum_score` run-to-run, cohort-independent.
 
 **Why:** `transform/metrics.py:162-166` uses `pl.col(...).rank("ordinal") / pl.col(...).count()`. The same repo will get a different score across runs because the rank depends on what else was ingested. Trend tracking is meaningless until this is fixed.
 
@@ -45,16 +49,18 @@ Written 2026-06-04. Covers the next 5 phases of work. Each phase is independentl
 
 ### Verify
 
-- [ ] Run `uv run python main.py --mode deep_only` against the current DB.
-- [ ] Spot-check the top 20 by `momentum_score` — should be qualitatively similar to today's ranking (a few shifts are expected and desired).
-- [ ] Run transform twice in a row **with no new ingestion**. Diff the `momentum_score` column — it should be byte-identical the second time. (Today, because of rank ties' nondeterminism, it might shift slightly. After the fix, it must not.)
-- [ ] Write a quick scratch test (or just compute by hand in a Python REPL) that confirms: given fixed inputs, `compute_metrics` produces the same score regardless of how many other rows are in the DataFrame.
+- [x] Run `uv run python main.py --mode deep_only` against the current DB.
+- [x] Spot-check the top 20 by `momentum_score` — should be qualitatively similar to today's ranking (a few shifts are expected and desired).
+- [x] Run transform twice in a row **with no new ingestion**. Diff the `momentum_score` column — it should be byte-identical the second time. (Today, because of rank ties' nondeterminism, it might shift slightly. After the fix, it must not.)
+- [x] Write a quick scratch test (or just compute by hand in a Python REPL) that confirms: given fixed inputs, `compute_metrics` produces the same score regardless of how many other rows are in the DataFrame.
 
 **Definition of done:** Same raw inputs → same `momentum_score`, run-to-run, cohort-independent.
 
 ---
 
-## Phase 2 — Daily snapshots into `repo_snapshots`
+## Phase 2 — Daily snapshots into `repo_snapshots`  ✅ COMPLETE
+
+**Status:** ✅ Complete — 2026-06-22 (commit `c096f65`). `write_snapshot()` writes one idempotent row per repo per UTC day; `run()` returns `(repo_count, snapshot_count)`; `main.py` logs the snapshot count and exports `data/snapshots.parquet` (`SNAPSHOTS_PARQUET_PATH` added to the contract). Verified locally against 7,864 repos. Remaining: observe the first scheduled GH Action commit a `snapshots.parquet` update.
 
 **Why:** The schema is already there (`contracts/schema.py:321-332`). Writing to it is the unlock for every trend feature. Starts fresh from today — no backfill.
 
@@ -77,11 +83,11 @@ Written 2026-06-04. Covers the next 5 phases of work. Each phase is independentl
 
 ### Verify
 
-- [ ] Run `uv run python main.py --mode deep_only` locally. Confirm `repo_snapshots` has one row per repo with today's date.
-- [ ] Run it again the same day. Confirm row count in `repo_snapshots` did not double — the same (repo_id, today) keys were replaced.
-- [ ] Confirm `data/snapshots.parquet` was written.
-- [ ] In DuckDB CLI: `SELECT snapshot_date, COUNT(*) FROM repo_snapshots GROUP BY snapshot_date;` — should show only today's date with the expected repo count.
-- [ ] Commit, push, watch the next scheduled daily-rising run on GitHub Actions complete and commit a `snapshots.parquet` update.
+- [x] Run `uv run python main.py --mode deep_only` locally. Confirm `repo_snapshots` has one row per repo with today's date. *(verified via `python -m transform.metrics` — identical snapshot write path — 7,864 rows for today)*
+- [x] Run it again the same day. Confirm row count in `repo_snapshots` did not double — the same (repo_id, today) keys were replaced. *(stayed at 7,864)*
+- [x] Confirm `data/snapshots.parquet` was written. *(151 KB, reads back with correct columns)*
+- [x] In DuckDB CLI: `SELECT snapshot_date, COUNT(*) FROM repo_snapshots GROUP BY snapshot_date;` — should show only today's date with the expected repo count. *(one row: today → 7,864)*
+- [ ] Commit, push, watch the next scheduled daily-rising run on GitHub Actions complete and commit a `snapshots.parquet` update. *(committed `c096f65`; push + GH Action observation still pending)*
 
 **Definition of done:** Every pipeline run produces a snapshot row per repo per day. Same-day reruns are idempotent. Parquet is exported for Streamlit Cloud.
 
@@ -244,12 +250,19 @@ These were considered and explicitly deferred:
 
 ---
 
+## Other notes of things to add
+
+- **Remember Selected Repo** Currently if you select a repo in a tab that is not the Repo Detail tab, the website forgets what one you picked. You should be able to select a repo, and then the website remembers so when you go to repo details, the repo you selected in a different tab should be the one selected.
+- **Rising Star Graph is below the Readme** When you select a repo in the rising stars tab, the graph for the rising stars ends up being below the readme from the repo. That needs to be different, ideally the graph stays at the top
+
+---
+
 ## Phase order recap
 
-| Phase | What | Verifies trend integrity? | User-visible? |
-|-------|------|--------------------------|---------------|
-| 1 | Fix momentum to absolute formula | Yes (blocks 2) | No |
-| 2 | Write daily snapshots | Yes (blocks 3) | No |
-| 3 | Dashboard rebuild + 06-01 cleanup | — | Yes (big) |
-| 4 | Pipeline timing + freshness banner | — | Yes (small) |
-| 5 | Smarter category mapping | — | Yes (distribution shift) |
+| Phase | What | Verifies trend integrity? | User-visible? | Status |
+|-------|------|--------------------------|---------------|--------|
+| 1 | Fix momentum to absolute formula | Yes (blocks 2) | No | ✅ Done (06-21) |
+| 2 | Write daily snapshots | Yes (blocks 3) | No | ✅ Done (06-22) |
+| 3 | Dashboard rebuild + 06-01 cleanup | — | Yes (big) | ⬜ Next |
+| 4 | Pipeline timing + freshness banner | — | Yes (small) | ⬜ |
+| 5 | Smarter category mapping | — | Yes (distribution shift) | ⬜ |
