@@ -21,3 +21,6 @@ data/*.duckdb
 # Clude files
 .claude/
 .claire/
+
+# harlequin config
+.harlequin.toml
