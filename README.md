@@ -4,6 +4,10 @@ A data pipeline and dashboard for tracking the health and momentum of popular AI
 
 Built originally as a learning project for multi-agent agentic coding using [Claude Squad](https://github.com/smtg-ai/claude-squad), where three Claude Code instances work in parallel across isolated git worktrees.
 
+You can see this dashboard live at [ai-radar-dashboard.streamlit.app](https://ai-radar-dashboard.streamlit.app/#ai-radar) - Hosted on Streamlit
+
+Note: Since this is hosted on Streamlit, the website is not always up. If this link brings you to a screen with a button to wake up the site, click that button and wait 1-2 minutes and the dashboard will appear. This is a limitation of the free tier of Streamlit.
+
 ---
 
 ## What it does
