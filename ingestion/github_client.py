@@ -178,6 +178,19 @@ def _request_with_retry(url: str, params: dict | None = None) -> dict:
             time.sleep(wait)
             continue
 
+        # Retry on transient server errors (5xx)
+        if 500 <= resp.status_code < 600:
+            wait = 2**attempt
+            log.warning(
+                "Server error (HTTP %s), attempt %d/%d — sleeping %ds",
+                resp.status_code,
+                attempt,
+                API_MAX_RETRIES,
+                wait,
+            )
+            time.sleep(wait)
+            continue
+
         resp.raise_for_status()
 
     # If all three attempts fail, throw an explicit error
