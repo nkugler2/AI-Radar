@@ -9,6 +9,40 @@ tags: [devlog, ai-radar]
 Day-by-day journal of what changed, why, and what's next. Newest entry on top.
 Git is the per-commit log of the code; this is the per-day log of the thinking.
 
+## 2026-09-02 — Weekly Deep unblocked after 10 weeks, and the merge bug it exposed
+
+### Steps taken
+
+1. **Root-caused the weekly deep failures.** Every run since 2026-06-17 was cancelled at exactly 1h0m. The timeout was the executioner, not the disease: the deep pass needs ~7,535 README calls against a **5,000/hour** core API quota, so it cannot finish inside an hour at any speed. The Aug 30 log (`gh run view 33307227208`) shows it burn the quota at ~4,900 repos, log `Sleeping 2462s until reset`, and get killed 14 minutes into that 41-minute sleep
+2. **Found why the README cache never helped:** `.gitignore:16` excludes `data/*.duckdb`, so CI starts with an empty DB every run and `_load_cached_readmes` (`ingestion/runner.py:98`) always reports `0 cached, 7535 to fetch`. The `README_CACHE_TTL_HOURS = 24 * 14` window added on 06-08 was correct and has simply never fired in CI
+3. **Fixed it** (`a77cea1`): `actions/cache@v4` on `data/ai_radar.duckdb` in `weekly-deep.yml`, keyed on `run_id` with a `restore-keys` prefix; `timeout-minutes` 60 → 120 so a cold run can absorb one quota reset. Added the same cache key to `daily-rising.yml` — GitHub evicts caches unread for 7 days and the deep cron is exactly 7 days, so the daily job keeps the key warm
+4. **Verified:** manual dispatch `33702795886` went green at **1h25m6s** against an 85-minute projection, and committed `aeb7f68`
+5. **Caught the regression that success exposed.** The new parquet was *smaller* — 8,323 → 7,541 rows. The deep run had deleted **1,474 repos**, median 32 stars, i.e. the accumulated daily-rising discoveries, including `nexu-io/open-design` (71k stars) and `continuedev/continue` (33k)
+6. **Fixed the merge bug** (`573e5f3`): `write_repos(upsert=False)` wipes the table before inserting (`transform/metrics.py:282-284`), and `main.py:59` seeded from the existing parquet for `rising_only` **only** — so `deep_only` ran the destructive path. This is the exact bug logged on **06-04**, fixed then for rising and never extended to deep. It stayed hidden for three months because deep hadn't written successfully since 06-17
+7. **Restored the data** (`8ada045`): merged the 1,474 dropped ids back from `aeb7f68~1`, fresh rows winning on overlap. 7,541 + 1,474 = 9,015, verified zero duplicate ids and zero ids missing from either source; both parquets had identical 29-column schemas
+
+### Decisions
+
+- **`full` mode deliberately keeps full-refresh semantics.** Only `rising_only` and `deep_only` seed-and-merge. `full` runs both passes and is the intentional clean-slate rebuild — making it merge too would leave no way to rebuild from scratch
+- **Cache saves on success only** (`actions/cache` default, not `if: always()`). Ingestion writes the DB in one `executemany` at the very end, so a killed run holds an *empty* DB — saving it would poison the cache and shadow a good one via `restore-keys`
+- **Two commits, not one**, so the 54 MB data restore can be reverted independently of the code fix
+- Ran the pipeline *before* hardening ingestion, on the reasoning that an 85-minute unattended CI run is cheap, fails fast on a bad token, and validates the timing estimate that any resume logic would have to be designed against. That call paid off — the estimate was exact, and the run surfaced the merge bug
+
+### What to test
+
+- Next Sunday's scheduled deep run should log a large `README cache: N cached` and finish in **minutes**, not 85. That is the real confirmation the cache persisted
+- After the next `daily-rising` run, confirm `data/repos.parquet` still has ~9,000+ rows — proof the merge fix holds from the rising side
+- Dashboard ([ai-radar-dashboard.streamlit.app](https://ai-radar-dashboard.streamlit.app/#ai-radar)) should show 9,015 repos once pushed; `dashboard/app.py:29,59` cache with `ttl=300`, so it self-refreshes within 5 minutes
+
+### Notes
+
+- **`PIPELINE_GITHUB_TOKEN` had expired** and was rotated 2026-09-03T00:42 UTC, which is why daily-rising threw `401 Unauthorized` on 09-01 and 09-02. Unrelated to the deep timeout but was masking it
+- **`contracts/schema.py:145` has a 60× arithmetic error** in a comment: it calls 5 workers ≈ 6.7 req/s "well under the 5000/hr (~83/s) core API limit". 5,000/hr is **1.39 req/s**; 83/s would be 5,000 per *minute*. Harmless to correctness (the quota binds regardless of pace) but it is why the budget looked fine when the 06-08 parallelization went in
+- **`DEEP_REPO_LIMIT = 400` (`contracts/schema.py:118`) is dead code** — defined, never referenced; runs use `DEFAULT_REPO_LIMIT = 150`. Its comment claims the weekly job "benefits from broader coverage" within a 60-minute budget, which is backwards. Wiring it up would nearly triple the corpus. Delete it or leave it disconnected
+- **Remaining fragility:** ingestion writes the DB all-at-once at the end, so a run killed mid-fetch banks nothing and the next cold run restarts from zero. Incremental writes would make runs resumable. Not urgent now that the cache is warm
+- Each pipeline run commits a ~50 MB parquet. Worth watching repo growth
+- This entry uses ISO `YYYY-MM-DD` per the template and `~/Documents/code/CLAUDE.md`; earlier entries use `MM-DD-YYYY` and should be normalized
+
 ## 06-22-2026 - Phases 1 & 2: absolute momentum scoring + daily snapshots
 
 ### Phase 1 — make momentum scoring absolute (committed 06-21, logged here)
