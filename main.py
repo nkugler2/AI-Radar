@@ -53,10 +53,18 @@ def main():
     ingestion_count = run_ingestion(mode=args.mode)
     log.info("Ingestion complete: %d repos fetched and written to raw_repos.", ingestion_count)
 
-    # Step 2: For rising_only, seed repos table from the existing Parquet so
-    # the 100 new repos are merged in rather than replacing everything.
+    # Step 2: For any partial pass, seed the repos table from the existing
+    # Parquet so this run's repos are merged in rather than replacing
+    # everything. Both partial modes need this, not just rising_only:
+    # deep_only sees only top-stars repos, so writing without the seed deletes
+    # every repo the rising pass ever found (and vice versa). That bug went
+    # unnoticed for months because deep_only hadn't written successfully since
+    # 2026-06-17 — its first green run dropped 1,474 rising-discovered repos.
+    #
+    # "full" is deliberately excluded: it runs both passes and is the
+    # intentional clean-slate rebuild.
     upsert_transform = False
-    if args.mode == "rising_only" and Path(PARQUET_PATH).exists():
+    if args.mode in ("rising_only", "deep_only") and Path(PARQUET_PATH).exists():
         log.info("")
         log.info("STEP 1.5: Seeding repos table from existing Parquet...")
         log.info("-" * 70)
