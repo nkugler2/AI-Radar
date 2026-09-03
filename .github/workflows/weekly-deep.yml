@@ -15,10 +15,31 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 120, not 60: the deep pass needs ~7.5k README calls against a 5000/hour
+    # core API quota, so a cold run MUST sit through one quota reset (~41 min)
+    # before it can finish. A 60-minute cap killed it mid-sleep every week from
+    # 2026-06-17 onward. Warm-cache runs finish in minutes; this budget only
+    # exists so a cold run can bootstrap the cache below.
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
+
+      # data/*.duckdb is gitignored, so without this the runner starts with an
+      # empty DB and _load_cached_readmes() reports "0 cached, 7535 to fetch"
+      # every single time — the README TTL cache never once fired in CI.
+      # Rolling key: run_id always misses, so a fresh cache is saved each run,
+      # while restore-keys pulls the most recent previous one. Saves on success
+      # only (actions/cache default) — deliberate, because ingestion writes the
+      # DB in one shot at the end, so a killed run would otherwise cache an
+      # empty DB and shadow a good one.
+      - name: Restore DuckDB README cache
+        uses: actions/cache@v4
+        with:
+          path: data/ai_radar.duckdb
+          key: ai-radar-duckdb-${{ github.run_id }}
+          restore-keys: |
+            ai-radar-duckdb-
 
       - uses: astral-sh/setup-uv@v4
         with:

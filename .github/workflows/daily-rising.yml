@@ -20,6 +20,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Same cache as weekly-deep.yml, on purpose. GitHub evicts caches after
+      # 7 days without a read, and the deep cron is exactly 7 days — a coin
+      # flip on eviction every week. The daily job touching this key keeps the
+      # deep pass's README cache alive, and the rising pass gets to reuse it too.
+      - name: Restore DuckDB README cache
+        uses: actions/cache@v4
+        with:
+          path: data/ai_radar.duckdb
+          key: ai-radar-duckdb-${{ github.run_id }}
+          restore-keys: |
+            ai-radar-duckdb-
+
       - uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
