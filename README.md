@@ -20,6 +20,8 @@ link brings you to a screen with a button to wake up the site, click that button
 and wait 1-2 minutes and the dashboard will appear. This is a limitation of the
 free tier of Streamlit.
 
+Project notes, devlog, and plans live in the in-repo vault: [notes/HOME.md](notes/HOME.md)
+
 ---
 
 ## What it does

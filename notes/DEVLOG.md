@@ -1,6 +1,6 @@
 ---
-id: DEVLOG
-aliases: [MYNOTES]
+up: "[Home](HOME.md)"
+type: devlog
 tags: [devlog, ai-radar]
 ---
 
@@ -8,6 +8,32 @@ tags: [devlog, ai-radar]
 
 Day-by-day journal of what changed, why, and what's next. Newest entry on top.
 Git is the per-commit log of the code; this is the per-day log of the thinking.
+
+## 2026-09-15 — Normalized the repo to the vault convention
+
+### Steps taken
+
+1. **Stamped the project vault** (`/new-project` on an existing repo): created `notes/` with `HOME.md`, `plans/MOC.md`, `docs/MOC.md`, `explanations/MOC.md`, plus `.marksman.toml` at the root
+2. **Moved the two long-lived docs into it** — `git mv DEVLOG.md notes/DEVLOG.md` and `git mv PLAN.md notes/plans/plan-next-phases.md`; the plan is linked from `notes/plans/MOC.md` flagged ← current (phases 1 ✅, 2 ✅, phase 3 next)
+3. **Rewrote `AGENTS.md`** to repo-specific facts only: kept the schema-contract rule, stack, layout (now a table, with a `notes/` row), commands, and gotchas; dropped the "How we work" section since phases/commits/devlog conventions live in the global layer. Folded the two determinism/merge rules from it into Gotchas, and corrected the merge gotcha to name both `rising_only` **and** `deep_only` — the 09-02 bug proved deep needs it too. Learning-mode flag set **OFF** (`/learn` still works on demand)
+4. **`CLAUDE.md` is now a symlink to `AGENTS.md`** (was a 9-line pointer file), so there is one canonical context file
+5. **Deleted the redundant root `MYNOTES.md`** — a stale, fully duplicated copy of four old devlog entries
+6. **Fixed `notes/DEVLOG.md` frontmatter** to the template's `up:`/`type:` form, keeping the `ai-radar` tag; added the README's one-line link to `notes/HOME.md`
+
+### Decisions
+
+- **Plan file renamed, not split.** `PLAN.md` → `notes/plans/plan-next-phases.md` keeps its full history and progress markers; future plans get their own `plan-*.md` beside it instead of overwriting this one
+- **Deleted `MYNOTES.md`** (`git rm`). Verified first that all four of its entries (05-08, 05-04, 03-30, 03-23) are byte-identical to entries already in the devlog — it was a stale duplicate that got re-added as a new file in `896ebce`, so nothing is lost. One devlog, in the vault, is now the only journal
+
+### What to test
+
+- `readlink CLAUDE.md` → `AGENTS.md`, and `cat CLAUDE.md` shows the AGENTS content
+- Every link in `notes/HOME.md` opens (`gf` in nvim, and on GitHub)
+- Nothing in the pipeline referenced the old paths — `grep -rn 'PLAN\.md\|DEVLOG\.md'` only hits docs
+
+### Next steps
+
+- Phase 3 of [plan-next-phases.md](plans/plan-next-phases.md) — the dashboard rebuild
 
 ## 2026-09-02 — Weekly Deep unblocked after 10 weeks, and the merge bug it exposed
 
